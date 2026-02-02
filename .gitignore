@@ -1,0 +1,11 @@
+/_build/
+/deps/
+/.fetch
+erl_crash.dump
+
+# Generated documentation
+/doc/
+
+# Temporary files
+/.elixir_ls/
+/.expert/

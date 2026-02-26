@@ -8,7 +8,7 @@ defmodule FeedReader.Format do
   """
 
   @callback id() :: atom()
-  @callback detect(prefix :: binary()) :: :match | :no_match
+  @callback matches_prefix?(prefix :: binary()) :: boolean()
   @callback handler() :: module()
   @callback new_parser_state(event_sink :: function(), opts :: keyword()) :: term()
 

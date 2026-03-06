@@ -5,6 +5,7 @@ erl_crash.dump
 
 # Generated documentation
 /doc/
+/cover/
 
 # Temporary files
 /.elixir_ls/

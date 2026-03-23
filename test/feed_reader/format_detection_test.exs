@@ -31,6 +31,32 @@ defmodule FeedReader.FormatDetectionTest do
     assert FeedReader.detect_format(content, max_detection_bytes: 40) == :rss
   end
 
+  test "detection fails closed for unsupported inputs and invalid limits" do
+    assert FeedReader.FormatDetector.detect(:not_binary, []) == :unknown
+    refute FeedReader.FormatDetector.validate(nil, :rss, [])
+    refute FeedReader.validate("<rss version='2.0'>", :rss, max_detection_bytes: 0)
+
+    {format, _prefix, _replay} = FeedReader.FormatDetector.detect_and_replay([:not_binary], [])
+    assert format == :unknown
+    refute FeedReader.FormatDetector.validate("<rss version='2.0'>", "rss", [])
+
+    source = ["<rss version='2.0'>"]
+
+    assert FeedReader.FormatDetector.detect_and_replay(source, max_detection_bytes: 0) ==
+             {:unknown, "", source}
+  end
+
+  test "enumerable detection finalizes when the source ends before its prefix limit" do
+    source = ["<rss version='2.0'>"]
+
+    {format, prefix, replay} =
+      FeedReader.FormatDetector.detect_and_replay(source, max_detection_bytes: 64)
+
+    assert format == :rss
+    assert prefix == hd(source)
+    assert Enum.to_list(replay) == [prefix]
+  end
+
   test "validation checks only the explicitly selected format" do
     rss = "<rss version='2.0'><channel></channel></rss>"
 

@@ -78,10 +78,14 @@ defmodule FeedReader.Parser do
   defp start_parser(input, format, opts, chunk_size) do
     parent = self()
     reference = make_ref()
+    max_queue_bytes = queue_limit(opts)
 
     {pid, monitor} =
       spawn_monitor(fn ->
-        sink = fn event -> send(parent, {reference, {:event, event}}) end
+        owner_monitor = Process.monitor(parent)
+
+        sink = event_sink(parent, reference, owner_monitor, max_queue_bytes)
+
         state = format.new_parser_state(sink, opts)
 
         result =
@@ -100,6 +104,8 @@ defmodule FeedReader.Parser do
   defp next_event(%{done?: true} = state), do: {:halt, state}
 
   defp next_event(state) do
+    send(state.pid, {state.reference, :demand})
+
     receive do
       {reference, {:event, event}} when reference == state.reference ->
         state = if match?({:error, _reason}, event), do: %{state | done?: true}, else: state
@@ -121,5 +127,42 @@ defmodule FeedReader.Parser do
     if Process.alive?(pid), do: Process.exit(pid, :kill)
     Process.demonitor(monitor, [:flush])
     :ok
+  end
+
+  defp event_sink(parent, reference, owner_monitor, max_queue_bytes) do
+    fn event ->
+      await_demand(parent, reference, owner_monitor)
+
+      if byte_size(:erlang.term_to_binary(event)) > max_queue_bytes do
+        send(
+          parent,
+          {reference, {:event, {:error, {:resource_limit, :max_queue_bytes, max_queue_bytes}}}}
+        )
+
+        exit(:normal)
+      else
+        send(parent, {reference, {:event, event}})
+      end
+    end
+  end
+
+  defp await_demand(parent, reference, owner_monitor) do
+    receive do
+      {^reference, :demand} -> :ok
+      {:DOWN, ^owner_monitor, :process, ^parent, _reason} -> exit(:normal)
+    end
+  end
+
+  defp queue_limit(opts) do
+    default =
+      case Keyword.get(opts, :max_item_bytes, 4_194_304) do
+        value when is_integer(value) and value >= 0 -> value
+        _invalid -> 4_194_304
+      end
+
+    case Keyword.get(opts, :max_queue_bytes, default) do
+      value when is_integer(value) and value >= 0 -> value
+      _invalid -> default
+    end
   end
 end

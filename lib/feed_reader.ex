@@ -66,6 +66,8 @@ defmodule FeedReader do
     metadata bytes. Defaults to `1_048_576`.
   - `:max_item_bytes` — non-negative integer maximum retained bytes for one
     item. Defaults to `4_194_304`.
+  - `:max_queue_bytes` — non-negative integer maximum serialized size of one
+    pending event. Defaults to `:max_item_bytes`.
 
   Zero is valid for resource limits. Missing or invalid resource-limit values
   use their defaults. Additional options are passed through to the selected

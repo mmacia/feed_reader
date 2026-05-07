@@ -13,6 +13,7 @@ defmodule FeedReader.TestSupport.ParserHaltFormat do
   @impl true
   def new_parser_state(_event_sink, opts) do
     if Keyword.get(opts, :normal_exit), do: exit(:normal)
+    if Keyword.get(opts, :abnormal_exit), do: exit(:parser_crashed)
     nil
   end
 

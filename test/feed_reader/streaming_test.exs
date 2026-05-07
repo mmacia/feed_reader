@@ -2,6 +2,7 @@ defmodule FeedReader.StreamingTest do
   use ExUnit.Case, async: true
 
   alias FeedReader.{Feed, Item, Session}
+  import ExUnit.CaptureLog
 
   @xml ~s(<rss version="2.0"><channel><title>Example</title><link>https://example.com/</link><item><title>First</title><guid>one</guid></item><item><title>Second</title><guid>two</guid></item></channel></rss>)
   @atom_xml ~s(<feed xmlns="http://www.w3.org/2005/Atom"><title>Atom</title></feed>)
@@ -110,6 +111,41 @@ defmodule FeedReader.StreamingTest do
     assert File.read!(path) == @xml
   end
 
+  test "does not retain an event larger than the pending queue budget" do
+    path = write_temp(@xml)
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, %{events: events}} = FeedReader.stream_file(path, max_queue_bytes: 1)
+    assert [{:error, {:resource_limit, :max_queue_bytes, 1}}] = Enum.to_list(events)
+  end
+
+  test "cancelling enumeration stops before the next item is parsed" do
+    path = write_temp(@xml)
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, %{events: events}} = FeedReader.stream_file(path)
+
+    assert [{:feed, %Feed{}}, {:item, %Item{uuid: "one"}}] =
+             events |> Stream.take(2) |> Enum.to_list()
+  end
+
+  test "cleans up the parser when the consumer raises" do
+    path = write_temp(@xml)
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, %{events: events}} = FeedReader.stream_file(path)
+
+    _log =
+      capture_log(fn ->
+        {:ok, consumer} =
+          Task.start(fn -> Enum.each(events, fn _event -> raise "consumer failed" end) end)
+
+        monitor = Process.monitor(consumer)
+
+        assert_receive {:DOWN, ^monitor, :process, ^consumer, {%RuntimeError{}, _stack}}
+      end)
+  end
+
   test "returns a stable error for a non-atom format option" do
     path = write_temp(@xml)
     on_exit(fn -> File.rm(path) end)
@@ -122,6 +158,16 @@ defmodule FeedReader.StreamingTest do
     on_exit(fn -> File.rm(path) end)
 
     assert {:error, :unknown} = FeedReader.stream_file(path, max_detection_bytes: 0)
+  end
+
+  test "uses queue defaults when queue limits are invalid" do
+    path = write_temp(@xml)
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, %{events: events}} =
+             FeedReader.stream_file(path, max_item_bytes: :invalid, max_queue_bytes: :invalid)
+
+    assert {:feed, %Feed{title: "Example"}} = Enum.at(Enum.to_list(events), 0)
   end
 
   test "delivers a parser halt as a terminal error event" do
@@ -150,6 +196,48 @@ defmodule FeedReader.StreamingTest do
              )
 
     assert [] = Enum.to_list(events)
+  end
+
+  test "delivers an abnormal parser exit as an error event" do
+    path = write_temp(@xml)
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, %{events: events}} =
+             FeedReader.stream_file(path,
+               format: :parser_halt,
+               formats: [FeedReader.TestSupport.ParserHaltFormat],
+               abnormal_exit: true
+             )
+
+    assert [{:error, :parser_crashed}] = Enum.to_list(events)
+  end
+
+  test "stops the parser when the consuming process dies" do
+    path = write_temp("<external-feed/>")
+    on_exit(fn -> File.rm(path) end)
+    test_pid = self()
+
+    assert {:ok, %{events: events}} =
+             FeedReader.stream_file(path,
+               format: :external_test,
+               formats: [FeedReader.TestSupport.ExternalFormat],
+               notify_parser: test_pid,
+               emit_event: true
+             )
+
+    consumer =
+      spawn(fn ->
+        Enum.each(events, fn event ->
+          send(test_pid, {:event, event})
+          Process.sleep(:infinity)
+        end)
+      end)
+
+    assert_receive {:parser_pid, parser}, 500
+    assert_receive {:event, {:feed, %Feed{title: "External"}}}, 500
+    parser_monitor = Process.monitor(parser)
+    Process.exit(consumer, :kill)
+    assert_receive {:DOWN, ^parser_monitor, :process, ^parser, :normal}, 500
   end
 
   defp write_temp(content) do

@@ -15,7 +15,13 @@ defmodule FeedReader.TestSupport.ExternalFormat do
   def handler, do: FeedReader.TestSupport.ExternalFormatHandler
 
   @impl true
-  def new_parser_state(event_sink, opts), do: %{event_sink: event_sink, opts: opts}
+  def new_parser_state(event_sink, opts) do
+    if notify = Keyword.get(opts, :notify_parser) do
+      send(notify, {:parser_pid, self()})
+    end
+
+    %{event_sink: event_sink, opts: opts}
+  end
 
   @impl true
   def normalize_feed(_state, _opts), do: %Feed{title: "External", type: :rss}

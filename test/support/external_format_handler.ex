@@ -7,6 +7,7 @@ defmodule FeedReader.TestSupport.ExternalFormatHandler do
   @impl true
   def handle_event(:start_document, _data, %{opts: opts} = state) do
     if Keyword.get(opts, :emit_event), do: emit_event(state)
+    Enum.each(Keyword.get(opts, :collector_events, []), fn event -> state.event_sink.(event) end)
 
     {:ok, state}
   end

@@ -24,9 +24,15 @@ defmodule FeedReader.ReqTransport do
   def request(url, opts) when is_binary(url) do
     http_options = Keyword.get(opts, :http_options, [])
 
+    headers = Keyword.get(http_options, :headers, @default_headers)
+    etag = Keyword.get(opts, :previous_etag)
+
+    headers =
+      if is_binary(etag), do: conditional_headers(headers, etag), else: headers
+
     request_options =
       http_options
-      |> Keyword.put_new(:headers, @default_headers)
+      |> Keyword.put(:headers, headers)
       |> Keyword.put(:into, :self)
       |> Keyword.put(:raw, true)
       |> Keyword.put(:decode_body, false)
@@ -49,13 +55,13 @@ defmodule FeedReader.ReqTransport do
 
   defp handle_response(request, response) do
     case response.status do
-      status when status in 200..299 ->
+      status when status in 200..299 or status == 304 ->
         {:ok,
          %{
            status: status,
            headers: Req.get_headers_list(response),
            final_url: URI.to_string(request.url),
-           body: response.body
+           body: if(status == 304, do: [], else: response.body)
          }}
 
       403 ->
@@ -73,6 +79,12 @@ defmodule FeedReader.ReqTransport do
       status ->
         {:error, {:http_status, status}}
     end
+  end
+
+  defp conditional_headers(headers, etag) when is_binary(etag) do
+    headers
+    |> Enum.reject(fn {name, _value} -> String.downcase(name) == "if-none-match" end)
+    |> Kernel.++([{"if-none-match", etag}])
   end
 
   defp retry_attempts(opts) do

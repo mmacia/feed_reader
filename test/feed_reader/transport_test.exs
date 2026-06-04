@@ -47,6 +47,19 @@ defmodule FeedReader.TransportTest do
     assert Enum.join(response.body) == "body"
   end
 
+  test "sends previous ETags verbatim and exposes a 304 response" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert Plug.Conn.get_req_header(conn, "if-none-match") == ["W/\"exact\""]
+      Plug.Conn.send_resp(conn, 304, "")
+    end)
+
+    assert {:ok, %{status: 304, body: []}} =
+             ReqTransport.request("https://example.com/feed",
+               previous_etag: "W/\"exact\"",
+               http_options: [plug: {Req.Test, __MODULE__}]
+             )
+  end
+
   test "follows redirects and reports the final URL" do
     Req.Test.expect(__MODULE__, 2, fn conn ->
       case conn.request_path do

@@ -17,8 +17,9 @@ defmodule FeedReader.Session do
 
   @type t :: %__MODULE__{
           events: Enumerable.t(),
-          fetch: Fetch.t() | nil
+          fetch: Fetch.t() | nil,
+          resource: map() | nil
         }
 
-  defstruct events: nil, fetch: nil
+  defstruct events: nil, fetch: nil, resource: nil
 end

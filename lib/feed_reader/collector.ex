@@ -30,6 +30,21 @@ defmodule FeedReader.Collector do
     end
   end
 
+  @doc "Collects a session and releases its owned source on every outcome."
+  @spec collect_session(FeedReader.Session.t(), keyword()) ::
+          {:ok, ParseResult.t()} | {:error, term()}
+  def collect_session(session, opts) do
+    collect_session_events(session, opts)
+  after
+    FeedReader.close(session)
+  end
+
+  defp collect_session_events(session, opts) do
+    with {:ok, max_items} <- max_items(opts) do
+      collect_events(session.events, max_items, opts)
+    end
+  end
+
   @doc """
   Collects XML chunks from an enumerable.
 

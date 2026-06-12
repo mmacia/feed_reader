@@ -24,7 +24,8 @@ defmodule FeedReader do
     max_compressed_bytes: 52_428_800,
     max_decoded_bytes: 52_428_800,
     max_temp_bytes: 52_428_800,
-    max_expansion_ratio: 100
+    max_expansion_ratio: 100,
+    max_parse_passes: 5
   ]
 
   @parsing_options_doc """
@@ -49,6 +50,8 @@ defmodule FeedReader do
   - `:max_queue_bytes` — non-negative maximum serialized size of one pending
     event; defaults to `:max_item_bytes`. Zero is valid; invalid values use
     that default.
+  - Verified APIs also accept `:max_parse_passes` (default
+    `#{@option_defaults[:max_parse_passes]}`), counting validation and delivery.
   """
 
   @remote_options_doc """
@@ -132,6 +135,22 @@ defmodule FeedReader do
   end
 
   @doc """
+  Validates the complete caller-owned local feed before returning an event session.
+
+  The source file is never removed. `:max_parse_passes` bounds validation and
+  event delivery passes.
+
+  ## Options
+
+  #{String.trim(@parsing_options_doc)}
+  """
+  @spec stream_file_verified(Path.t(), keyword()) ::
+          {:ok, FeedReader.Session.t()} | {:error, term()}
+  def stream_file_verified(path, opts \\ []) do
+    FeedReader.VerifiedParser.stream_file(path, opts)
+  end
+
+  @doc """
   Downloads and checksums a feed before returning a lazy event session.
 
   The session emits feed metadata followed by items from one local XML pass.
@@ -151,6 +170,43 @@ defmodule FeedReader do
     case FeedReader.Downloader.download(url, opts) do
       {:ok, %{path: _path, fetch: _fetch} = download} ->
         create_session(download, opts)
+
+      result ->
+        result
+    end
+  end
+
+  @doc """
+  Downloads and validates a feed before exposing its remote event session.
+
+  Matching checksums and conditional HTTP 304 responses return `:not_changed`
+  and `:not_modified` without a session. Call `close/1` if enumeration may stop
+  early.
+
+  ## Options
+
+  #{String.trim(@remote_options_doc)}
+
+  #{String.trim(@parsing_options_doc)}
+  """
+  @spec stream_verified(String.t(), keyword()) ::
+          {:ok, FeedReader.Session.t() | :not_changed | :not_modified} | {:error, term()}
+  def stream_verified(url, opts \\ []) do
+    case FeedReader.Downloader.download(url, opts) do
+      {:ok, %{path: path, fetch: fetch} = download} ->
+        parser_opts =
+          opts
+          |> Keyword.put_new(:feed_url, fetch.final_url)
+          |> Keyword.put(:owned_source_path, path)
+
+        case FeedReader.VerifiedParser.stream_file(path, parser_opts) do
+          {:ok, %FeedReader.Session{} = session} ->
+            {:ok, %FeedReader.Session{session | fetch: fetch}}
+
+          {:error, reason} ->
+            FeedReader.Downloader.close(download)
+            {:error, reason}
+        end
 
       result ->
         result
@@ -181,7 +237,7 @@ defmodule FeedReader do
     end
   end
 
-  @doc "Closes a remote session; safe after completion or repeated calls."
+  @doc "Closes an owned remote session; safe after completion or repeated calls."
   @spec close(FeedReader.Session.t()) :: :ok
   def close(%FeedReader.Session{resource: %{path: _path} = resource}) do
     FeedReader.Downloader.close(resource)

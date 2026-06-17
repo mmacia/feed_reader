@@ -63,6 +63,30 @@ defmodule FeedReader.RemoteSessionTest do
     assert download_files() == before
   end
 
+  test "verified downloads preserve unchanged outcomes and clean rejected feeds" do
+    url = "https://example.com/feed.xml"
+
+    assert {:ok, :not_modified} =
+             FeedReader.stream_verified(url, request_opts("", response: response([], [], 304)))
+
+    assert {:ok, :not_changed} =
+             FeedReader.stream_verified(
+               url,
+               request_opts(@xml, previous_checksum: checksum(@xml))
+             )
+
+    before = download_files()
+
+    assert {:error, :unknown} =
+             FeedReader.stream_verified(url, request_opts("<unknown/>", format: :invalid))
+
+    assert download_files() == before
+  end
+
+  test "verified stream validates its default-argument URL path" do
+    assert {:error, :invalid_url} = FeedReader.stream_verified(:invalid)
+  end
+
   test "covers default options and closing a local session" do
     assert {:error, :invalid_url} = FeedReader.stream(:invalid)
 

@@ -1,7 +1,7 @@
 defmodule FeedReader.RSSTest do
   use ExUnit.Case, async: true
 
-  alias FeedReader.Formats.RSS
+  alias FeedReader.{Feed, Formats.RSS, Item}
 
   @xml ~s(<rss version="2.0"><channel><title>Example</title><description>Latest news</description><link>https://example.com/</link><category>News</category><category>News</category><item><title>Story</title><guid isPermaLink="false">story-1</guid><link>/story</link><author>Writer</author><description>Summary</description><content:encoded><![CDATA[<p>Full text</p>]]></content:encoded><pubDate>Mon, 24 Feb 2025 17:00:05 GMT</pubDate></item><item><title> </title><link>https://example.com/second</link><pubDate>not a date</pubDate></item><item><title> </title></item></channel></rss>)
 
@@ -11,6 +11,22 @@ defmodule FeedReader.RSSTest do
     assert_receive {:feed, %FeedReader.Feed{title: "Example", categories: ["News"]}}
     assert_receive {:item, %FeedReader.Item{title: "Story", uuid: "story-1"}}
     assert {:ok, _} = parse("<rss version='2.0'><channel/></rss>", sink)
+  end
+
+  test "preserves relative links when no absolute feed base is available" do
+    assert {:ok, %Item{canonical_url: "/story"}} =
+             RSS.normalize_item(
+               %{"title" => "Story", "link" => "/story"},
+               %Feed{html_url: "/"},
+               []
+             )
+
+    assert {:ok, %Item{canonical_url: "https://example.com/story"}} =
+             RSS.normalize_item(
+               %{"title" => "Story", "link" => "/story"},
+               %Feed{html_url: "/", feed_url: "https://example.com/feed.xml"},
+               []
+             )
   end
 
   test "stops malformed and over-budget input and rejects orphan SAX events" do

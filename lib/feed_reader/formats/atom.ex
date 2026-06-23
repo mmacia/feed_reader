@@ -1,7 +1,7 @@
 defmodule FeedReader.Formats.Atom do
   @moduledoc "Atom feed detection and normalization."
   @behaviour FeedReader.Format
-  alias FeedReader.{Feed, Item, XMLResourceLimits}
+  alias FeedReader.{Feed, Item, URL, XMLResourceLimits}
 
   @impl true
   def matches_prefix?(prefix), do: Regex.match?(~r/<feed\b/is, prefix)
@@ -44,7 +44,13 @@ defmodule FeedReader.Formats.Atom do
     title = raw |> Map.get("title") |> text() |> clean()
     content = raw |> Map.get("content") |> content()
     summary = raw |> Map.get("summary") |> content() || if(is_nil(content), do: title)
-    canonical = raw |> Map.get("link") |> List.wrap() |> find_link() |> correct_url(feed.html_url)
+
+    canonical =
+      raw
+      |> Map.get("link")
+      |> List.wrap()
+      |> find_link()
+      |> URL.resolve_root_relative([feed.html_url, feed.feed_url])
 
     author = get_in(raw, ["author", "name"]) |> text()
 
@@ -88,10 +94,6 @@ defmodule FeedReader.Formats.Atom do
   defp valid_url?(url),
     do: is_binary(url) and url |> URI.parse() |> then(&(!is_nil(&1.scheme) and !is_nil(&1.host)))
 
-  defp correct_url("/" <> _ = url, base) when is_binary(base),
-    do: URI.merge(base, url) |> URI.to_string()
-
-  defp correct_url(url, _base), do: url
   defp clean(nil), do: nil
   defp clean(value), do: value |> HtmlSanitizeEx.strip_tags() |> blank_to_nil()
   defp blank_to_nil(value), do: if(String.trim(value) == "", do: nil, else: String.trim(value))

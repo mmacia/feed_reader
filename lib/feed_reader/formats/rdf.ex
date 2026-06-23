@@ -2,7 +2,7 @@ defmodule FeedReader.Formats.RDF do
   @moduledoc "RDF Site Summary format detection and normalization."
   @behaviour FeedReader.Format
 
-  alias FeedReader.{Feed, Item, XMLResourceLimits}
+  alias FeedReader.{Feed, Item, URL, XMLResourceLimits}
 
   @impl true
   def matches_prefix?(prefix), do: Regex.match?(~r/<rdf:rdf\b/is, prefix)
@@ -52,7 +52,12 @@ defmodule FeedReader.Formats.RDF do
     title = raw |> Map.get("title") |> text() |> clean()
     description = text(raw["description"])
     content = text(raw["content:encoded"])
-    canonical = raw |> Map.get("link") |> text() |> correct_url(feed.html_url)
+
+    canonical =
+      raw
+      |> Map.get("link")
+      |> text()
+      |> URL.resolve_root_relative([feed.html_url, feed.feed_url])
 
     {:ok,
      %Item{
@@ -75,11 +80,6 @@ defmodule FeedReader.Formats.RDF do
   defp text(_value), do: nil
   defp clean(nil), do: nil
   defp clean(value), do: value |> HtmlSanitizeEx.strip_tags() |> text()
-
-  defp correct_url("/" <> _ = url, base) when is_binary(base),
-    do: URI.merge(base, url) |> URI.to_string()
-
-  defp correct_url(url, _base), do: url
 
   defp published_at(nil), do: DateTime.utc_now(:second)
 

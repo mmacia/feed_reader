@@ -20,6 +20,20 @@ defmodule FeedReader.AtomTest do
     assert_receive {:item, %Item{title: "12345", content_summary: "12345"}}
   end
 
+  test "preserves relative links when no absolute feed base is available" do
+    raw = %{"title" => "Story", "link" => [%{"href" => "/story", "rel" => "alternate"}]}
+
+    assert {:ok, %Item{canonical_url: "/story"}} =
+             Atom.normalize_item(raw, %Feed{html_url: "/"}, [])
+
+    assert {:ok, %Item{canonical_url: "https://example.com/story"}} =
+             Atom.normalize_item(
+               raw,
+               %Feed{html_url: "/", feed_url: "https://example.com/feed.xml"},
+               []
+             )
+  end
+
   test "accounts for parser failures and closes empty feeds" do
     handler = Atom.handler()
     sink = fn event -> send(self(), event) end

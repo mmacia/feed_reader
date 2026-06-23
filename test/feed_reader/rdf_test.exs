@@ -34,6 +34,20 @@ defmodule FeedReader.RDFTest do
     assert_receive {:item, %Item{title: "Title only", content_full: nil, content_summary: nil}}
   end
 
+  test "preserves relative links when no absolute feed base is available" do
+    raw = %{"title" => "Story", "link" => "/story"}
+
+    assert {:ok, %Item{canonical_url: "/story"}} =
+             RDF.normalize_item(raw, %Feed{html_url: "/"}, [])
+
+    assert {:ok, %Item{canonical_url: "https://example.com/story"}} =
+             RDF.normalize_item(
+               raw,
+               %Feed{html_url: "/", feed_url: "https://example.com/feed.xml"},
+               []
+             )
+  end
+
   test "enforces shared SAX limits and reports malformed XML" do
     sink = fn _event -> :ok end
 

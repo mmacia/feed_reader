@@ -3,7 +3,7 @@ defmodule FeedReader.Formats.RSS do
 
   @behaviour FeedReader.Format
 
-  alias FeedReader.{Feed, Item, XMLResourceLimits}
+  alias FeedReader.{Feed, Item, URL, XMLResourceLimits}
 
   @impl true
   def matches_prefix?(prefix) do
@@ -58,7 +58,7 @@ defmodule FeedReader.Formats.RSS do
     content = value(item, "content:encoded")
     link = value(item, "link")
 
-    canonical_url = correct_url(link, feed.html_url)
+    canonical_url = URL.resolve_root_relative(link, [feed.html_url, feed.feed_url])
     uuid = value(item, "guid") || canonical_url
     summary = description || if(is_nil(content), do: title)
     language_text = Enum.join(Enum.reject([title, content, description], &is_nil/1), "\n")
@@ -90,13 +90,6 @@ defmodule FeedReader.Formats.RSS do
 
   defp clean_title(nil), do: nil
   defp clean_title(value), do: value |> HtmlSanitizeEx.strip_tags() |> blank_to_nil()
-
-  defp correct_url(nil, _base), do: nil
-
-  defp correct_url("/" <> _ = url, base) when is_binary(base),
-    do: URI.merge(base, url) |> URI.to_string()
-
-  defp correct_url(url, _base), do: url
 
   defp published_at(nil), do: nil
 

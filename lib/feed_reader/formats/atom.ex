@@ -1,7 +1,7 @@
 defmodule FeedReader.Formats.Atom do
   @moduledoc "Atom feed detection and normalization."
   @behaviour FeedReader.Format
-  alias FeedReader.{Feed, Item, URL, XMLResourceLimits}
+  alias FeedReader.{Feed, Item, Language, URL, XMLResourceLimits}
 
   @impl true
   def matches_prefix?(prefix), do: Regex.match?(~r/<feed\b/is, prefix)
@@ -65,7 +65,7 @@ defmodule FeedReader.Formats.Atom do
        canonical_url: canonical,
        author: author,
        published_at: published_at(date),
-       language: language(Enum.join(Enum.reject([title, content, summary], &is_nil/1), "\n"))
+       language: Language.detect([title, content, summary])
      }}
   end
 
@@ -102,8 +102,4 @@ defmodule FeedReader.Formats.Atom do
   defp published_at(value), do: DateTimeParser.parse(value, to_utc: true) |> parsed_date()
   defp parsed_date({:ok, %DateTime{} = date}), do: date
   defp parsed_date(_result), do: nil
-
-  defp language(text), do: Tongue.detect(HtmlSanitizeEx.strip_tags(text)) |> detected_language()
-  defp detected_language([{language, _} | _]), do: language
-  defp detected_language(_languages), do: :en
 end

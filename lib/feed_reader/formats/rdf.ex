@@ -2,7 +2,7 @@ defmodule FeedReader.Formats.RDF do
   @moduledoc "RDF Site Summary format detection and normalization."
   @behaviour FeedReader.Format
 
-  alias FeedReader.{Feed, Item, URL, XMLResourceLimits}
+  alias FeedReader.{Feed, Item, Language, URL, XMLResourceLimits}
 
   @impl true
   def matches_prefix?(prefix), do: Regex.match?(~r/<rdf:rdf\b/is, prefix)
@@ -68,7 +68,7 @@ defmodule FeedReader.Formats.RDF do
        canonical_url: canonical,
        author: text(raw["dc:creator"]),
        published_at: published_at(text(raw["dc:date"])),
-       language: language(Enum.join(Enum.reject([title, content, description], &is_nil/1), "\n"))
+       language: Language.detect([title, content, description])
      }}
   end
 
@@ -87,13 +87,6 @@ defmodule FeedReader.Formats.RDF do
     case DateTimeParser.parse(value, to_utc: true) do
       {:ok, %DateTime{} = date} -> date
       _invalid -> DateTime.utc_now(:second)
-    end
-  end
-
-  defp language(text) do
-    case Tongue.detect(HtmlSanitizeEx.strip_tags(text)) do
-      [{language, _score} | _rest] -> language
-      _none -> :en
     end
   end
 end

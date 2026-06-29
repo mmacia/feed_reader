@@ -3,7 +3,7 @@ defmodule FeedReader.Formats.RSS do
 
   @behaviour FeedReader.Format
 
-  alias FeedReader.{Feed, Item, URL, XMLResourceLimits}
+  alias FeedReader.{Feed, Item, Language, URL, XMLResourceLimits}
 
   @impl true
   def matches_prefix?(prefix) do
@@ -61,7 +61,6 @@ defmodule FeedReader.Formats.RSS do
     canonical_url = URL.resolve_root_relative(link, [feed.html_url, feed.feed_url])
     uuid = value(item, "guid") || canonical_url
     summary = description || if(is_nil(content), do: title)
-    language_text = Enum.join(Enum.reject([title, content, description], &is_nil/1), "\n")
 
     {:ok,
      %Item{
@@ -72,7 +71,7 @@ defmodule FeedReader.Formats.RSS do
        canonical_url: canonical_url,
        author: value(item, "dc:creator") || value(item, "author"),
        published_at: published_at(value(item, "pubDate") || value(item, "dc:date")),
-       language: language(language_text)
+       language: Language.detect([title, content, description])
      }}
   end
 
@@ -97,13 +96,6 @@ defmodule FeedReader.Formats.RSS do
     case DateTimeParser.parse(value, to_utc: true) do
       {:ok, %DateTime{} = date} -> date
       _invalid -> nil
-    end
-  end
-
-  defp language(text) do
-    case Tongue.detect(HtmlSanitizeEx.strip_tags(text)) do
-      [{language, _score} | _rest] -> language
-      _none -> :en
     end
   end
 end

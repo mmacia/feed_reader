@@ -34,6 +34,15 @@ defmodule FeedReader.AtomTest do
              )
   end
 
+  test "joins multiple author names in source order" do
+    raw = %{
+      "title" => "Story",
+      "author" => [%{"name" => "Alice"}, %{"name" => "Bob"}]
+    }
+
+    assert {:ok, %Item{author: "Alice, Bob"}} = Atom.normalize_item(raw, %Feed{}, [])
+  end
+
   test "accounts for parser failures and closes empty feeds" do
     handler = Atom.handler()
     sink = fn event -> send(self(), event) end

@@ -52,7 +52,7 @@ defmodule FeedReader.Formats.Atom do
       |> find_link()
       |> URL.resolve_root_relative([feed.html_url, feed.feed_url])
 
-    author = get_in(raw, ["author", "name"]) |> text()
+    author = raw |> Map.get("author") |> author()
 
     date = text(raw["published"]) || text(raw["updated"])
 
@@ -83,6 +83,18 @@ defmodule FeedReader.Formats.Atom do
     do: markup |> IO.iodata_to_binary() |> blank_to_nil()
 
   defp content(value), do: text(value)
+
+  defp author(value) do
+    value
+    |> List.wrap()
+    |> Enum.map(&author_name/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(", ")
+    |> blank_to_nil()
+  end
+
+  defp author_name(%{"name" => name}), do: text(name)
+  defp author_name(value), do: text(value)
 
   defp find_link(links) do
     case Enum.find(links, &((is_map(&1) and &1["href"]) && &1["rel"] in [nil, "alternate"])) do

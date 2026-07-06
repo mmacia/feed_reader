@@ -5,8 +5,8 @@ defmodule FeedReader.Collector do
   The collector consumes the event stream produced by `FeedReader.Parser` and
   returns a `FeedReader.ParseResult`. Callers must provide a positive integer
   `:max_items`; accepted items beyond that limit produce an error instead of a
-  partial result. The parser continues through its terminal event so malformed
-  tails are not hidden by the collection limit.
+  partial result. The parser stops after the feed's root element, so content
+  appended after a complete feed is not parsed.
 
   Binary and chunk-enumerable inputs are written incrementally to a temporary
   file before parsing. The temporary file is owned and removed by the collector;

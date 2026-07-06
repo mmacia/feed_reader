@@ -286,8 +286,8 @@ defmodule FeedReader do
   @doc """
   Collects a caller-owned local XML file into a bounded parse result.
 
-  The parser continues through the end of the source so malformed tails are
-  reported. An item accepted beyond the limit returns
+   The parser stops after the feed's root element, ignoring content appended
+   after a complete feed. An item accepted beyond the limit returns
   `{:error, {:max_items_exceeded, max_items}}` without partial data.
 
   ## Options

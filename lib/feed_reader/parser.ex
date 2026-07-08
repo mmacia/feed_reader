@@ -92,9 +92,17 @@ defmodule FeedReader.Parser do
           Saxy.parse_stream(input, format.handler(), state, character_data_max_length: chunk_size)
 
         case result do
-          {:ok, _state} -> send(parent, {reference, :done})
-          {:error, reason} -> send(parent, {reference, {:event, {:error, reason}}})
-          {:halt, _state, _rest} -> send(parent, {reference, {:event, {:error, :parser_halted}}})
+          {:ok, _state} ->
+            send(parent, {reference, :done})
+
+          {:error, reason} ->
+            send(parent, {reference, {:event, {:error, reason}}})
+
+          {:halt, state, _rest} when is_map(state) and state.root_closed ->
+            send(parent, {reference, :done})
+
+          {:halt, _state, _rest} ->
+            send(parent, {reference, {:event, {:error, :parser_halted}}})
         end
       end)
 

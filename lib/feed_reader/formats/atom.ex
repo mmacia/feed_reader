@@ -17,6 +17,7 @@ defmodule FeedReader.Formats.Atom do
       limits: XMLResourceLimits.new(opts),
       frames: [],
       feed: nil,
+      root_closed: false,
       error: nil
     }
 

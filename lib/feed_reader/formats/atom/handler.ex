@@ -91,10 +91,10 @@ defmodule FeedReader.Formats.Atom.Handler do
   defp close_element(%{name: "feed"}, feed, %{feed: nil} = state) do
     state = %{state | feed: feed}
     state.event_sink.({:feed, Atom.normalize_feed(state, state.opts)})
-    {:ok, state}
+    halt_at_root(state)
   end
 
-  defp close_element(%{name: "feed"}, _feed, state), do: {:ok, state}
+  defp close_element(%{name: "feed"}, _feed, state), do: halt_at_root(state)
 
   defp close_element(frame, value, %{frames: [parent | rest]} = state) do
     children = Map.update(parent.children, frame.name, value, &(List.wrap(&1) ++ [value]))
@@ -103,6 +103,9 @@ defmodule FeedReader.Formats.Atom.Handler do
   end
 
   defp close_element(_frame, _value, state), do: {:ok, state}
+
+  defp halt_at_root(%{frames: []} = state), do: {:halt, %{state | root_closed: true}}
+  defp halt_at_root(state), do: {:ok, state}
 
   defp render(frame) do
     attrs = Enum.map_join(frame.attrs, " ", fn {key, value} -> ~s(#{key}="#{value}") end)

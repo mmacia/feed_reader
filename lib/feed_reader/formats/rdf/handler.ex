@@ -96,5 +96,6 @@ defmodule FeedReader.Formats.RDF.Handler do
     {:ok, %{state | frames: [%{parent | children: children} | rest]}}
   end
 
-  defp close_element(_frame, _value, state), do: {:ok, state}
+  defp close_element(_frame, _value, %{frames: []} = state),
+    do: {:halt, %{state | root_closed: true}}
 end

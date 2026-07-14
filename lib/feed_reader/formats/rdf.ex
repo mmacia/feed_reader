@@ -21,6 +21,7 @@ defmodule FeedReader.Formats.RDF do
       limits: XMLResourceLimits.new(opts),
       frames: [],
       channel: nil,
+      root_closed: false,
       error: nil
     }
 

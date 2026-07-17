@@ -94,6 +94,9 @@ defmodule FeedReader.Formats.RSS.Handler do
 
   defp close_element("channel", _channel, state), do: {:ok, state}
 
+  defp close_element("rss", _feed, %{frames: []} = state),
+    do: {:halt, %{state | root_closed: true}}
+
   defp close_element(name, value, %{frames: [parent | rest]} = state) do
     children = Map.update(parent.children, name, value, &(List.wrap(&1) ++ [value]))
     {:ok, %{state | frames: [%{parent | children: children} | rest]}}

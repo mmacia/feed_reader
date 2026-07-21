@@ -6,13 +6,13 @@ defmodule FeedReader.AtomTest do
   @xhtml ~s(<feed><title>Feed</title><id>https://example.com/fallback</id><entry><content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello <b>world</b></p></div></content></entry><entry><title>12345</title><link href="https://example.com/item"/><published>not a date</published></entry></feed>)
 
   test "normalizes feed metadata and entry fields" do
-    assert {:ok, _} = parse(@xml)
+    assert {:halt, _, _} = parse(@xml)
     assert_receive {:feed, %Feed{title: "News", type: :atom, categories: ["Tech"]}}
 
     assert_receive {:item, %Item{content_full: "<p>Full text</p>"}}
     assert %Feed{html_url: nil} = Atom.normalize_feed(%{feed: %{}}, [])
 
-    assert {:ok, _} = parse(@xhtml)
+    assert {:halt, _, _} = parse(@xhtml)
 
     assert_receive {:feed, %Feed{html_url: "https://example.com/fallback"}}
     assert_receive {:item, %Item{content_full: xhtml, content_summary: nil}}
@@ -82,7 +82,7 @@ defmodule FeedReader.AtomTest do
     assert {:stop, %{error: {:resource_limit, :max_item_bytes, 1}}} =
              handler.handle_event(:start_element, {"entry", []}, state)
 
-    assert {:ok, _} = Saxy.parse_string("<feed/>", handler, Atom.new_parser_state(sink, []))
+    assert {:halt, _, _} = Saxy.parse_string("<feed/>", handler, Atom.new_parser_state(sink, []))
     assert_receive {:feed, %Feed{type: :atom}}
 
     assert {:ok, _} =

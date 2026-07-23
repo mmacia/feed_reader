@@ -16,7 +16,7 @@ defmodule FeedReader.RDFTest do
     assert RDF.matches_prefix?("<rdf:RDF>")
     assert RDF.handler() == FeedReader.Formats.RDF.Handler
     sink = fn event -> send(self(), event) end
-    assert {:ok, _} = parse(@xml, sink)
+    assert {:halt, _, _} = parse(@xml, sink)
 
     assert_receive {:feed,
                     %Feed{title: "Example", description: "News", type: :rdf, categories: ["Tech"]}}
@@ -71,7 +71,7 @@ defmodule FeedReader.RDFTest do
   test "emits fallback metadata before the first item when a channel is absent" do
     sink = fn event -> send(self(), event) end
 
-    assert {:ok, _} = parse("<rdf:RDF><item><title>Orphan</title></item></rdf:RDF>", sink)
+    assert {:halt, _, _} = parse("<rdf:RDF><item><title>Orphan</title></item></rdf:RDF>", sink)
     assert_receive {:feed, %Feed{title: nil, type: :rdf}}
     assert_receive {:item, %Item{title: "Orphan"}}
   end

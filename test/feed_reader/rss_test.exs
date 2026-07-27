@@ -7,10 +7,10 @@ defmodule FeedReader.RSSTest do
 
   test "format callback normalizes feed metadata and RSS items" do
     sink = fn event -> send(self(), event) end
-    assert {:ok, _} = parse(@xml, sink)
+    assert {:halt, _, _} = parse(@xml, sink)
     assert_receive {:feed, %FeedReader.Feed{title: "Example", categories: ["News"]}}
     assert_receive {:item, %FeedReader.Item{title: "Story", uuid: "story-1"}}
-    assert {:ok, _} = parse("<rss version='2.0'><channel/></rss>", sink)
+    assert {:halt, _, _} = parse("<rss version='2.0'><channel/></rss>", sink)
   end
 
   test "preserves relative links when no absolute feed base is available" do

@@ -47,7 +47,9 @@ defmodule FeedReader.RemoteSessionTest do
     assert {:error, {:max_items_exceeded, 1}} = fetch_and_parse(@xml, max_items: 1)
     assert download_files() == before
 
-    assert {:error, _reason} = fetch_and_parse(@xml <> "<broken", max_items: 2)
+    assert {:ok, %RemoteResult{items: [%Item{uuid: "one"}, %Item{uuid: "two"}]}} =
+             fetch_and_parse(@xml <> "<broken", max_items: 2)
+
     assert download_files() == before
   end
 

@@ -51,8 +51,9 @@ defmodule FeedReader.CollectorTest do
     assert {:error, {:max_items_exceeded, 1}} = FeedReader.parse_binary(@xml, max_items: 1)
   end
 
-  test "continues to the terminal parser event before returning a malformed-tail error" do
-    assert {:error, _reason} = FeedReader.parse_binary(@xml <> "<broken", max_items: 2)
+  test "ignores malformed content after the root element" do
+    assert {:ok, %ParseResult{items: [%Item{uuid: "one"}, %Item{uuid: "two"}]}} =
+             FeedReader.parse_binary(@xml <> "<broken", max_items: 2)
   end
 
   test "rejects invalid chunks and binary arguments" do

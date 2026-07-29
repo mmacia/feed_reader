@@ -18,11 +18,12 @@ defmodule FeedReader.VerifiedParserTest do
     assert File.read!(path) == @xml
   end
 
-  test "does not return a session for malformed tails or an insufficient pass budget" do
+  test "ignores trailing content but rejects an insufficient pass budget" do
     path = write_temp(@xml <> "<broken")
     on_exit(fn -> File.rm(path) end)
 
-    assert {:error, %Saxy.ParseError{}} = FeedReader.stream_file_verified(path)
+    assert {:ok, %{events: events}} = FeedReader.stream_file_verified(path)
+    assert length(Enum.to_list(events)) == 2
 
     valid_path = write_temp(@xml)
     on_exit(fn -> File.rm(valid_path) end)

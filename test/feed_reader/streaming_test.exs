@@ -24,7 +24,7 @@ defmodule FeedReader.StreamingTest do
     assert File.read!(path) == @xml
   end
 
-  test "delivers a malformed tail as a terminal error after earlier events" do
+  test "stops at the root and ignores trailing content" do
     xml = @xml <> "<broken"
     path = write_temp(xml)
     on_exit(fn -> File.rm(path) end)
@@ -35,8 +35,7 @@ defmodule FeedReader.StreamingTest do
     assert {:feed, %Feed{}} = Enum.at(events, 0)
     assert {:item, %Item{uuid: "one"}} = Enum.at(events, 1)
     assert {:item, %Item{uuid: "two"}} = Enum.at(events, 2)
-    assert {:error, _reason} = Enum.at(events, 3)
-    assert length(events) == 4
+    assert length(events) == 3
     assert File.read!(path) == xml
   end
 

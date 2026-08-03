@@ -46,8 +46,8 @@ defmodule FeedReader.Parser do
         {:error, :unknown}
 
       format ->
-        {:ok, format,
-         File.stream!(path, Keyword.get(opts, :chunk_size, @default_chunk_size), [:raw])}
+        input = File.stream!(path, Keyword.get(opts, :chunk_size, @default_chunk_size), [:raw])
+        {:ok, format, strip_utf8_bom(input)}
     end
   end
 
@@ -66,6 +66,34 @@ defmodule FeedReader.Parser do
   end
 
   defp format_module(_format, _opts), do: nil
+
+  defp strip_utf8_bom(input) do
+    Stream.transform(input, fn -> {:pending, <<>>} end, &strip_bom_chunk/2, &flush_bom/1)
+  end
+
+  defp strip_bom_chunk(chunk, {:pending, prefix}) do
+    data = prefix <> chunk
+
+    if byte_size(data) < 3 do
+      {[], {:pending, data}}
+    else
+      output =
+        if binary_part(data, 0, 3) == <<0xEF, 0xBB, 0xBF>>,
+          do: binary_part(data, 3, byte_size(data) - 3),
+          else: data
+
+      emit_bom_chunk(output)
+    end
+  end
+
+  defp strip_bom_chunk(chunk, :ready), do: {[chunk], :ready}
+
+  defp emit_bom_chunk(<<>>), do: {[], :ready}
+  defp emit_bom_chunk(chunk), do: {[chunk], :ready}
+
+  defp flush_bom({:pending, <<>>}), do: []
+  defp flush_bom({:pending, prefix}), do: [prefix]
+  defp flush_bom(:ready), do: []
 
   defp event_stream(input, format, opts, chunk_size) do
     Stream.resource(

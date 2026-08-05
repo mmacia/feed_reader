@@ -24,6 +24,23 @@ defmodule FeedReader.StreamingTest do
     assert File.read!(path) == @xml
   end
 
+  test "ignores a UTF-8 BOM split across input chunks" do
+    xml = <<0xEF, 0xBB, 0xBF>> <> @xml
+    path = write_temp(xml)
+
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, %{events: events}} = FeedReader.stream_file(path, chunk_size: 1)
+
+    assert [
+             {:feed, %Feed{title: "Example"}},
+             {:item, %Item{uuid: "one"}},
+             {:item, %Item{uuid: "two"}}
+           ] = Enum.to_list(events)
+
+    assert File.read!(path) == xml
+  end
+
   test "stops at the root and ignores trailing content" do
     xml = @xml <> "<broken"
     path = write_temp(xml)

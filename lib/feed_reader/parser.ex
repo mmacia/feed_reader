@@ -47,7 +47,7 @@ defmodule FeedReader.Parser do
 
       format ->
         input = File.stream!(path, Keyword.get(opts, :chunk_size, @default_chunk_size), [:raw])
-        {:ok, format, strip_utf8_bom(input)}
+        {:ok, format, normalize_xml_prefix(input)}
     end
   end
 
@@ -67,33 +67,54 @@ defmodule FeedReader.Parser do
 
   defp format_module(_format, _opts), do: nil
 
-  defp strip_utf8_bom(input) do
-    Stream.transform(input, fn -> {:pending, <<>>} end, &strip_bom_chunk/2, &flush_bom/1)
+  defp normalize_xml_prefix(input) do
+    Stream.transform(
+      input,
+      fn -> {:leading, <<>>} end,
+      &normalize_prefix_chunk/2,
+      &flush_prefix/1
+    )
   end
 
-  defp strip_bom_chunk(chunk, {:pending, prefix}) do
+  defp normalize_prefix_chunk(chunk, {:leading, prefix}) do
     data = prefix <> chunk
 
-    if byte_size(data) < 3 do
-      {[], {:pending, data}}
+    if bom_prefix?(data) do
+      {[], {:leading, data}}
     else
       output =
-        if binary_part(data, 0, 3) == <<0xEF, 0xBB, 0xBF>>,
+        if starts_with_bom?(data),
           do: binary_part(data, 3, byte_size(data) - 3),
           else: data
 
-      emit_bom_chunk(output)
+      output = trim_leading_xml_whitespace(output)
+
+      if output == <<>> do
+        {[], {:leading, <<>>}}
+      else
+        {[output], :ready}
+      end
     end
   end
 
-  defp strip_bom_chunk(chunk, :ready), do: {[chunk], :ready}
+  defp normalize_prefix_chunk(chunk, :ready), do: {[chunk], :ready}
 
-  defp emit_bom_chunk(<<>>), do: {[], :ready}
-  defp emit_bom_chunk(chunk), do: {[chunk], :ready}
+  defp bom_prefix?(data) when byte_size(data) < 3,
+    do: data == binary_part(<<0xEF, 0xBB, 0xBF>>, 0, byte_size(data))
 
-  defp flush_bom({:pending, <<>>}), do: []
-  defp flush_bom({:pending, prefix}), do: [prefix]
-  defp flush_bom(:ready), do: []
+  defp bom_prefix?(_data), do: false
+
+  defp starts_with_bom?(<<0xEF, 0xBB, 0xBF, _rest::binary>>), do: true
+  defp starts_with_bom?(_data), do: false
+
+  defp trim_leading_xml_whitespace(<<char, rest::binary>>) when char in [9, 10, 13, 32],
+    do: trim_leading_xml_whitespace(rest)
+
+  defp trim_leading_xml_whitespace(data), do: data
+
+  defp flush_prefix({:leading, <<>>}), do: []
+  defp flush_prefix({:leading, prefix}), do: [prefix]
+  defp flush_prefix(:ready), do: []
 
   defp event_stream(input, format, opts, chunk_size) do
     Stream.resource(

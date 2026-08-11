@@ -56,6 +56,10 @@ defmodule FeedReader.CollectorTest do
              FeedReader.parse_binary(@xml <> "<broken", max_items: 2)
   end
 
+  test "rejects non-whitespace content before the XML document" do
+    assert {:error, _reason} = FeedReader.parse_binary("junk" <> @xml, max_items: 2)
+  end
+
   test "rejects invalid chunks and binary arguments" do
     assert {:error, :invalid_chunk} =
              FeedReader.parse_stream([@xml, 123], max_items: 2)

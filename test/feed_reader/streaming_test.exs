@@ -24,8 +24,8 @@ defmodule FeedReader.StreamingTest do
     assert File.read!(path) == @xml
   end
 
-  test "ignores a UTF-8 BOM split across input chunks" do
-    xml = <<0xEF, 0xBB, 0xBF>> <> @xml
+  test "ignores a BOM and XML whitespace split across input chunks" do
+    xml = <<0xEF, 0xBB, 0xBF, 32, 9, 13, 10>> <> ~s(<?xml version="1.0"?>) <> @xml
     path = write_temp(xml)
 
     on_exit(fn -> File.rm(path) end)

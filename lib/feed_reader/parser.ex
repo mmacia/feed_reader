@@ -47,7 +47,7 @@ defmodule FeedReader.Parser do
 
       format ->
         input = File.stream!(path, Keyword.get(opts, :chunk_size, @default_chunk_size), [:raw])
-        {:ok, format, normalize_xml_prefix(input)}
+        {:ok, format, normalize_xml_input(input, declared_encoding(prefix))}
     end
   end
 
@@ -66,6 +66,29 @@ defmodule FeedReader.Parser do
   end
 
   defp format_module(_format, _opts), do: nil
+
+  defp declared_encoding(prefix) do
+    case Regex.run(~r/<\?xml\b[^>]*\bencoding\s*=\s*["']([^"']+)["']/is, prefix,
+           capture: :all_but_first
+         ) do
+      [encoding] -> normalize_encoding(encoding)
+      _none -> :utf8
+    end
+  end
+
+  defp normalize_encoding(encoding) do
+    case String.downcase(encoding) do
+      value when value in ["iso-8859-1", "latin1", "latin-1"] -> :latin1
+      _utf8 -> :utf8
+    end
+  end
+
+  defp normalize_xml_input(input, encoding) do
+    input
+    |> normalize_xml_prefix()
+    |> transcode_input(encoding)
+    |> normalize_encoding_declaration(encoding)
+  end
 
   defp normalize_xml_prefix(input) do
     Stream.transform(
@@ -115,6 +138,49 @@ defmodule FeedReader.Parser do
   defp flush_prefix({:leading, <<>>}), do: []
   defp flush_prefix({:leading, prefix}), do: [prefix]
   defp flush_prefix(:ready), do: []
+
+  defp transcode_input(input, :utf8), do: input
+
+  defp transcode_input(input, :latin1),
+    do: Stream.map(input, fn chunk -> :unicode.characters_to_binary(chunk, :latin1, :utf8) end)
+
+  defp normalize_encoding_declaration(input, :utf8), do: input
+
+  defp normalize_encoding_declaration(input, :latin1) do
+    Stream.transform(
+      input,
+      fn -> {:prolog, <<>>} end,
+      &rewrite_declaration_chunk/2,
+      &flush_declaration/1
+    )
+  end
+
+  defp rewrite_declaration_chunk(chunk, {:prolog, prefix}) do
+    data = prefix <> chunk
+
+    case :binary.match(data, "?>") do
+      {position, 2} ->
+        {declaration, rest} = :erlang.split_binary(data, position + 2)
+        {[rewrite_declaration(declaration) <> rest], :ready}
+
+      :nomatch ->
+        {[], {:prolog, data}}
+    end
+  end
+
+  defp rewrite_declaration_chunk(chunk, :ready), do: {[chunk], :ready}
+
+  defp rewrite_declaration(declaration) do
+    Regex.replace(
+      ~r/(encoding\s*=\s*["'])[^"']+(["'])/i,
+      declaration,
+      "\\1UTF-8\\2",
+      global: false
+    )
+  end
+
+  defp flush_declaration({:prolog, prefix}), do: [prefix]
+  defp flush_declaration(:ready), do: []
 
   defp event_stream(input, format, opts, chunk_size) do
     Stream.resource(

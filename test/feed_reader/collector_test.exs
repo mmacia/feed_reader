@@ -60,6 +60,18 @@ defmodule FeedReader.CollectorTest do
     assert {:error, _reason} = FeedReader.parse_binary("junk" <> @xml, max_items: 2)
   end
 
+  test "transcodes ISO-8859-1 XML while parsing as UTF-8" do
+    xml =
+      ~s(<?xml version="1.0" encoding="ISO-8859-1"?><rss version="2.0"><channel><title>caf) <>
+        <<0xE9>> <>
+        ~s(</title></channel></rss>)
+
+    expected_title = "caf" <> <<0xC3, 0xA9>>
+
+    assert {:ok, %ParseResult{feed: %Feed{title: ^expected_title}}} =
+             FeedReader.parse_binary(xml, max_items: 1)
+  end
+
   test "rejects invalid chunks and binary arguments" do
     assert {:error, :invalid_chunk} =
              FeedReader.parse_stream([@xml, 123], max_items: 2)

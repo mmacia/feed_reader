@@ -126,10 +126,13 @@ defmodule FeedReader.Collector do
     path =
       Path.join(System.tmp_dir!(), "feed_reader-parse-#{System.unique_integer([:positive])}.xml")
 
-    case File.open(path, [:write, :binary]) do
+    case File.open(path, [:write, :binary, :exclusive]) do
       {:ok, file} ->
         File.close(file)
         {:ok, path}
+
+      {:error, :eexist} ->
+        temporary_path()
 
       {:error, reason} ->
         {:error, reason}

@@ -228,7 +228,11 @@ defmodule FeedReader.Downloader do
     end)
   end
 
-  defp open_temp_file do
+  defp open_temp_file(attempts \\ 5)
+
+  defp open_temp_file(0), do: {:error, :eexist}
+
+  defp open_temp_file(attempts) do
     path =
       Path.join(
         System.tmp_dir!(),
@@ -237,6 +241,7 @@ defmodule FeedReader.Downloader do
 
     case File.open(path, [:write, :binary, :exclusive]) do
       {:ok, file} -> {:ok, path, file}
+      {:error, :eexist} -> open_temp_file(attempts - 1)
       error -> error
     end
   end

@@ -72,6 +72,25 @@ defmodule FeedReader.CollectorTest do
              FeedReader.parse_binary(xml, max_items: 1)
   end
 
+  test "escapes invalid entities while preserving CDATA" do
+    xml =
+      ~s(<rss version="2.0"><channel><title>Example</title><item><link>https://example.com/?a=1&b=2</link><content:encoded><![CDATA[<p>A & B</p>]]></content:encoded></item></channel></rss>)
+
+    assert {:ok, %ParseResult{items: [%Item{canonical_url: url, content_full: content}]}} =
+             FeedReader.parse_binary(xml, max_items: 1, chunk_size: 1)
+
+    assert url == "https://example.com/?a=1&b=2"
+    assert content == "<p>A & B</p>"
+  end
+
+  test "repairs literal quotes inside XML attributes" do
+    xml =
+      ~s(<feed xmlns="http://www.w3.org/2005/Atom"><title>Example</title><entry><title>Post</title><link href="https://example.com/post" rel="alternate" type="text/html" title="How to "Sustain Heroku"" /></entry></feed>)
+
+    assert {:ok, %ParseResult{items: [%Item{canonical_url: "https://example.com/post"}]}} =
+             FeedReader.parse_binary(xml, max_items: 1)
+  end
+
   test "rejects invalid chunks and binary arguments" do
     assert {:error, :invalid_chunk} =
              FeedReader.parse_stream([@xml, 123], max_items: 2)

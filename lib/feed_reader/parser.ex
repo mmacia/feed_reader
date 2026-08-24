@@ -88,6 +88,8 @@ defmodule FeedReader.Parser do
     |> normalize_xml_prefix()
     |> transcode_input(encoding)
     |> normalize_encoding_declaration(encoding)
+    |> normalize_entities()
+    |> normalize_attribute_quotes()
   end
 
   defp normalize_xml_prefix(input) do
@@ -181,6 +183,168 @@ defmodule FeedReader.Parser do
 
   defp flush_declaration({:prolog, prefix}), do: [prefix]
   defp flush_declaration(:ready), do: []
+
+  defp normalize_entities(input) do
+    Stream.transform(
+      input,
+      fn -> {:normal, <<>>} end,
+      &normalize_entity_chunk/2,
+      &flush_entities/1
+    )
+  end
+
+  defp normalize_entity_chunk(chunk, {mode, pending}) do
+    {output, mode, pending} = scan_entities(pending <> chunk, mode, [])
+    emit_entity_chunk(output, {mode, pending})
+  end
+
+  defp scan_entities(data, :normal, output) do
+    case next_markup(data) do
+      :none ->
+        case partial_markup_prefix(data) do
+          :none ->
+            {append_output(output, data), :normal, <<>>}
+
+          length ->
+            split = byte_size(data) - length
+
+            {append_output(output, binary_part(data, 0, split)), :normal,
+             binary_part(data, split, length)}
+        end
+
+      {position, :cdata} ->
+        {prefix, rest} = :erlang.split_binary(data, position)
+
+        scan_entities(binary_part(rest, 9, byte_size(rest) - 9), :cdata, [
+          "<![CDATA[",
+          prefix | output
+        ])
+
+      {position, :comment} ->
+        {prefix, rest} = :erlang.split_binary(data, position)
+
+        scan_entities(binary_part(rest, 4, byte_size(rest) - 4), :comment, [
+          "<!--",
+          prefix | output
+        ])
+
+      {position, :entity} ->
+        {prefix, rest} = :erlang.split_binary(data, position)
+        normalize_entity_reference(binary_part(rest, 1, byte_size(rest) - 1), [prefix | output])
+    end
+  end
+
+  defp scan_entities(data, :cdata, output) do
+    case :binary.match(data, "]]>") do
+      :nomatch ->
+        keep = min(byte_size(data), 2)
+        split = byte_size(data) - keep
+
+        {append_output(output, binary_part(data, 0, split)), :cdata,
+         binary_part(data, split, keep)}
+
+      {position, 3} ->
+        {prefix, rest} = :erlang.split_binary(data, position + 3)
+        scan_entities(rest, :normal, [prefix | output])
+    end
+  end
+
+  defp scan_entities(data, :comment, output) do
+    case :binary.match(data, "-->") do
+      :nomatch ->
+        keep = min(byte_size(data), 2)
+        split = byte_size(data) - keep
+
+        {append_output(output, binary_part(data, 0, split)), :comment,
+         binary_part(data, split, keep)}
+
+      {position, 3} ->
+        {prefix, rest} = :erlang.split_binary(data, position + 3)
+        scan_entities(rest, :normal, [prefix | output])
+    end
+  end
+
+  defp next_markup(data) do
+    [
+      {:cdata, :binary.match(data, "<![CDATA[")},
+      {:comment, :binary.match(data, "<!--")},
+      {:entity, :binary.match(data, "&")}
+    ]
+    |> Enum.reduce(:none, &earliest_markup/2)
+  end
+
+  defp partial_markup_prefix(<<>>), do: :none
+
+  defp partial_markup_prefix(data) do
+    max_length = min(byte_size(data), 8)
+
+    Enum.find_value(max_length..1//-1, :none, fn length ->
+      suffix = binary_part(data, byte_size(data) - length, length)
+
+      if suffix in [binary_part("<![CDATA[", 0, length), binary_part("<!--", 0, min(length, 4))],
+        do: length,
+        else: false
+    end)
+  end
+
+  defp earliest_markup({_kind, :nomatch}, result), do: result
+  defp earliest_markup({kind, {position, _length}}, :none), do: {position, kind}
+
+  defp earliest_markup({kind, {position, _length}}, {current, _current_kind})
+       when position < current,
+       do: {position, kind}
+
+  defp earliest_markup(_candidate, result), do: result
+
+  defp normalize_entity_reference(data, output) do
+    case consume_entity(data, "&") do
+      {:complete, entity, rest} ->
+        entity = if valid_entity?(entity), do: entity, else: escape_entity(entity)
+        scan_entities(rest, :normal, [entity | output])
+
+      {:invalid, entity, rest} ->
+        scan_entities(rest, :normal, [escape_entity(entity) | output])
+
+      :incomplete ->
+        {output, :normal, "&" <> data}
+    end
+  end
+
+  defp consume_entity(<<>>, _entity), do: :incomplete
+  defp consume_entity(<<";", rest::binary>>, entity), do: {:complete, entity <> ";", rest}
+
+  defp consume_entity(<<char, rest::binary>>, entity)
+       when char in [9, 10, 13, 32, 34, 38, 39, 60],
+       do: {:invalid, entity, <<char, rest::binary>>}
+
+  defp consume_entity(<<char, rest::binary>>, entity),
+    do: consume_entity(rest, entity <> <<char>>)
+
+  defp valid_entity?(entity),
+    do: Regex.match?(~r/^&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);$/i, entity)
+
+  defp escape_entity(entity), do: "&amp;" <> binary_part(entity, 1, byte_size(entity) - 1)
+
+  defp append_output(output, <<>>), do: output
+  defp append_output(output, chunk), do: [chunk | output]
+
+  defp emit_entity_chunk(output, state) do
+    output = output |> Enum.reverse() |> IO.iodata_to_binary()
+    if output == <<>>, do: {[], state}, else: {[output], state}
+  end
+
+  defp flush_entities({_mode, <<>>}), do: []
+  defp flush_entities({_mode, pending}), do: [pending]
+
+  defp normalize_attribute_quotes(input) do
+    Stream.map(input, fn chunk ->
+      Regex.replace(
+        ~r/(=\")([^\"]*)(\")([^\"]*)(\")(\")(?=\s*(?:\/>|>))/,
+        chunk,
+        "\\1\\2&quot;\\4&quot;\\6"
+      )
+    end)
+  end
 
   defp event_stream(input, format, opts, chunk_size) do
     Stream.resource(

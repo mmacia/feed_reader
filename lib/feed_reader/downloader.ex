@@ -233,11 +233,7 @@ defmodule FeedReader.Downloader do
   defp open_temp_file(0), do: {:error, :eexist}
 
   defp open_temp_file(attempts) do
-    path =
-      Path.join(
-        System.tmp_dir!(),
-        "feed_reader-download-#{System.unique_integer([:positive])}.xml"
-      )
+    path = FeedReader.TempFile.random_file("feed_reader-download")
 
     case File.open(path, [:write, :binary, :exclusive]) do
       {:ok, file} -> {:ok, path, file}

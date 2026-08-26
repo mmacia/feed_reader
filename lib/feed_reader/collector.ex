@@ -123,8 +123,7 @@ defmodule FeedReader.Collector do
     do: {:ok, %ParseResult{feed: feed, items: Enum.reverse(items)}}
 
   defp temporary_path do
-    path =
-      Path.join(System.tmp_dir!(), "feed_reader-parse-#{System.unique_integer([:positive])}.xml")
+    path = FeedReader.TempFile.random_file("feed_reader-parse")
 
     case File.open(path, [:write, :binary, :exclusive]) do
       {:ok, file} ->

@@ -91,6 +91,14 @@ defmodule FeedReader.CollectorTest do
              FeedReader.parse_binary(xml, max_items: 1)
   end
 
+  test "does not repair quotes across adjacent XML elements" do
+    xml =
+      ~s(<rss version="2.0"><channel><title>Example</title><item><source url="">Source</source><category domain="region">News</category></item></channel></rss>)
+
+    assert {:ok, %ParseResult{items: [%Item{title: nil}]}} =
+             FeedReader.parse_binary(xml, max_items: 1, chunk_size: 1)
+  end
+
   test "rejects invalid chunks and binary arguments" do
     assert {:error, :invalid_chunk} =
              FeedReader.parse_stream([@xml, 123], max_items: 2)

@@ -1,7 +1,7 @@
 defmodule FeedReader.Parser do
   @moduledoc "One-pass local feed parsing used by `FeedReader.stream_file/2`."
 
-  alias FeedReader.{FormatRegistry, Session, XMLRecovery}
+  alias FeedReader.{FormatRegistry, Recovery, Session}
 
   @default_chunk_size 65_536
 
@@ -45,7 +45,7 @@ defmodule FeedReader.Parser do
 
       format ->
         input = File.stream!(path, Keyword.get(opts, :chunk_size, @default_chunk_size), [:raw])
-        {:ok, format, XMLRecovery.normalize(input, XMLRecovery.declared_encoding(prefix))}
+        {:ok, format, Recovery.normalize(input, Recovery.declared_encoding(prefix))}
     end
   end
 

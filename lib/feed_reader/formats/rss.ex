@@ -7,7 +7,7 @@ defmodule FeedReader.Formats.RSS do
 
   @impl true
   def matches_prefix?(prefix) do
-    Regex.match?(~r/<rss\b[^>]*\bversion\s*=\s*(["'])2\.0\1/is, prefix)
+    Regex.match?(~r/<rss\b[^>]*\bversion\s*=\s*(["'])(?:0\.9(?:1|2)?|2\.0)\1/is, prefix)
   end
 
   @impl true

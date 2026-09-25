@@ -2,6 +2,7 @@ defmodule FeedReader.Recovery.EncodingTest do
   use ExUnit.Case, async: true
 
   alias FeedReader.Recovery.Encoding
+  alias FeedReader.Recovery
 
   test "passes UTF-8 input through unchanged" do
     chunks = ["<title>", "café", "</title>"]
@@ -28,5 +29,16 @@ defmodule FeedReader.Recovery.EncodingTest do
 
     assert chunks |> Encoding.normalize_declaration(:latin1) |> Enum.join() ==
              "<?xml version=\"1.0\" encoding=\"UTF-8\"?><rss/>"
+  end
+
+  test "rewrites a US-ASCII declaration to UTF-8" do
+    chunks = ["<?xml version=\"1.0\" encoding=\"us-ascii\"?>", "<rss/>"]
+
+    assert chunks |> Encoding.normalize_declaration(:ascii) |> Enum.join() ==
+             "<?xml version=\"1.0\" encoding=\"UTF-8\"?><rss/>"
+  end
+
+  test "recognizes US-ASCII declarations" do
+    assert Recovery.declared_encoding("<?xml encoding=\"us-ascii\"?>") == :ascii
   end
 end

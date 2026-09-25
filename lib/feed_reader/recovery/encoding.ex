@@ -8,14 +8,14 @@ defmodule FeedReader.Recovery.Encoding do
   to UTF-8, including declarations split across input chunks.
   """
 
-  def transcode(input, :utf8), do: input
+  def transcode(input, encoding) when encoding in [:utf8, :ascii], do: input
 
   def transcode(input, :latin1),
     do: Stream.map(input, &:unicode.characters_to_binary(&1, :latin1, :utf8))
 
   def normalize_declaration(input, :utf8), do: input
 
-  def normalize_declaration(input, :latin1) do
+  def normalize_declaration(input, encoding) when encoding in [:latin1, :ascii] do
     Stream.transform(input, fn -> {:prolog, <<>>} end, &rewrite_chunk/2, &flush/1)
   end
 

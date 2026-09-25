@@ -10,7 +10,7 @@ defmodule FeedReader.Recovery do
   """
 
   @doc "Returns the encoding declared by an XML prefix, defaulting to UTF-8."
-  @spec declared_encoding(binary()) :: :utf8 | :latin1
+  @spec declared_encoding(binary()) :: :utf8 | :latin1 | :ascii
   def declared_encoding(prefix) do
     case Regex.run(~r/<\?xml\b[^>]*\bencoding\s*=\s*["']([^"']+)["']/is, prefix,
            capture: :all_but_first
@@ -34,6 +34,7 @@ defmodule FeedReader.Recovery do
   defp normalize_encoding(encoding) do
     case String.downcase(encoding) do
       value when value in ["iso-8859-1", "latin1", "latin-1"] -> :latin1
+      "us-ascii" -> :ascii
       _utf8 -> :utf8
     end
   end

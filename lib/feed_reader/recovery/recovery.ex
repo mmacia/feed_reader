@@ -21,7 +21,7 @@ defmodule FeedReader.Recovery do
   end
 
   @doc "Normalizes an enumerable of XML chunks without eagerly consuming it."
-  @spec normalize(Enumerable.t(), :utf8 | :latin1) :: Enumerable.t()
+  @spec normalize(Enumerable.t(), :utf8 | :latin1 | :ascii) :: Enumerable.t()
   def normalize(input, encoding) do
     input
     |> Prefix.normalize()

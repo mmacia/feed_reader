@@ -1,5 +1,5 @@
 defmodule FeedReader.Formats.RSS do
-  @moduledoc "RSS 2.0 format detection and normalization."
+  @moduledoc "RSS format detection and normalization."
 
   @behaviour FeedReader.Format
 
@@ -7,7 +7,17 @@ defmodule FeedReader.Formats.RSS do
 
   @impl true
   def matches_prefix?(prefix) do
-    Regex.match?(~r/<rss\b[^>]*\bversion\s*=\s*(["'])(?:0\.9(?:1|2)?|2\.0)\1/is, prefix)
+    case Regex.run(~r/<rss\b([^>]*)>/is, prefix, capture: :all_but_first) do
+      [attributes] ->
+        not Regex.match?(~r/\bversion\s*=/is, attributes) or
+          Regex.match?(
+            ~r/\bversion\s*=\s*(["'])(?:0\.9(?:1|2)?|2\.0)\1/is,
+            attributes
+          )
+
+      _none ->
+        false
+    end
   end
 
   @impl true

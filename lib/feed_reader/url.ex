@@ -16,7 +16,7 @@ defmodule FeedReader.URL do
 
   defp absolute?(url) when is_binary(url) do
     uri = URI.parse(url)
-    is_binary(uri.scheme) and is_binary(uri.host)
+    is_binary(uri.scheme) and uri.scheme != "" and is_binary(uri.host) and uri.host != ""
   rescue
     URI.Error -> false
   end

@@ -11,7 +11,7 @@ defmodule FeedReader.Formats.RSS do
       [attributes] ->
         not Regex.match?(~r/\bversion\s*=/is, attributes) or
           Regex.match?(
-            ~r/\bversion\s*=\s*(["'])(?:0\.9(?:1|2)?|2\.0)\1/is,
+            ~r/\bversion\s*=\s*(["'])(?:0\.9(?:1|2)?|1\.0|2\.0)\1/is,
             attributes
           )
 

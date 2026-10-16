@@ -6,8 +6,8 @@ defmodule FeedReader.FormatDetectionTest do
   test "detects RSS, Atom, and RDF from a bounded XML prefix" do
     assert FeedReader.detect_format("<?xml version='1.0'?><rss version='2.0'>") == :rss
     assert FeedReader.detect_format("<rss version='0.91'>") == :rss
+    assert FeedReader.detect_format("<rss version='1.0'>") == :rss
     assert FeedReader.detect_format("<rss xmlns:xsi='urn:test'>") == :rss
-    assert FeedReader.detect_format("<rss version='1.0'>") == :unknown
     assert FeedReader.detect_format("<feed xmlns='http://www.w3.org/2005/Atom'>") == :atom
     assert FeedReader.detect_format("<rdf:RDF xmlns:rdf='urn:rdf'>") == :rdf
     assert FeedReader.detect_format("<html><body>not a feed</body></html>") == :unknown

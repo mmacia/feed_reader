@@ -4,13 +4,16 @@ defmodule FeedReader.MixProject do
   def project do
     [
       app: :feed_reader,
+      name: "FeedReader",
       version: "0.1.0",
+      description: description(),
       elixir: "~> 1.20.4",
       elixirc_paths: elixirc_paths(Mix.env()),
       test_coverage: [ignore_modules: [~r/^FeedReader\.TestSupport\./]],
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      package: package()
     ]
   end
 
@@ -22,6 +25,12 @@ defmodule FeedReader.MixProject do
     [preferred_envs: [precommit: :test]]
   end
 
+  defp package,
+    do: %{
+      licenses: ["Apache-2.0"],
+      links: %{"git" => "https://git.codeup.net/mmacia/feed_reader"}
+    }
+
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
@@ -29,6 +38,7 @@ defmodule FeedReader.MixProject do
     [
       {:credo, "~> 1.7.19", only: :dev},
       {:date_time_parser, "~> 1.3.0"},
+      {:ex_doc, "~> 0.40.0", only: :dev, runtime: false},
       {:ex_slop, "~> 0.4", only: :dev},
       {:html_sanitize_ex, "~> 1.5.5"},
       {:plug, "~> 1.0", only: :test},
@@ -37,6 +47,11 @@ defmodule FeedReader.MixProject do
       {:tongue, "~> 2.3.0"}
     ]
   end
+
+  defp description,
+    do: """
+    FeedReader is an Elixir library for fetching and parsing RSS, Atom, and RDF feeds. It supports local files, binaries, streams, and remote URLs.
+    """
 
   defp aliases do
     [

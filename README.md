@@ -5,6 +5,11 @@ data. It detects formats automatically, recovers from common defects in
 real-world XML, and is tested against real feeds. Bounded results and lazy event
 streams make it suitable for production workloads.
 
+The [canonical repository](https://git.codeup.net/mmacia/feed_reader) is hosted
+on Codeup. Copies on GitHub, GitLab, and other forges are mirrors for broader
+distribution; project development and updates are maintained in the canonical
+repository.
+
 Add FeedReader to your Mix project's dependencies:
 
 ```elixir

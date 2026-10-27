@@ -5,7 +5,7 @@ defmodule FeedReader.MixProject do
     [
       app: :feed_reader,
       name: "FeedReader",
-      version: "0.1.0",
+      version: "0.1.1",
       description: description(),
       elixir: "~> 1.20.4",
       elixirc_paths: elixirc_paths(Mix.env()),

@@ -1,0 +1,135 @@
+# Custom formats and transports
+
+FeedReader supports custom format modules and injectable HTTP transports. Both
+extensions are supplied through options on each API call.
+
+## Format detection and selection
+
+Built-in formats are tried in RSS, Atom, RDF order. Additional modules passed
+through `:formats` are checked afterward, in list order. Duplicate modules are
+removed. Format detection inspects at most `:max_detection_bytes` (65,536 by
+default), so custom `matches_prefix?/1` callbacks must decide from that prefix
+alone.
+
+Select a built-in by ID or module:
+
+```elixir
+FeedReader.parse_file("priv/feed.xml", format: :rss, max_items: 500)
+FeedReader.stream_file("priv/feed.xml", format: FeedReader.Formats.RSS)
+```
+
+## Implement a format
+
+Implement `FeedReader.Format` and provide a Saxy handler:
+
+```elixir
+defmodule MyApp.NoticeFormat do
+  @behaviour FeedReader.Format
+  alias FeedReader.{Feed, Item}
+
+  @impl true
+  def id, do: :notice
+
+  @impl true
+  def matches_prefix?(prefix), do: String.starts_with?(prefix, "<notice-feed")
+
+  @impl true
+  def handler, do: MyApp.NoticeHandler
+
+  @impl true
+  def new_parser_state(event_sink, opts) do
+    %{event_sink: event_sink, opts: opts, frames: [], title: nil}
+  end
+
+  @impl true
+  def normalize_feed(state, _opts) do
+    %Feed{title: state.title}
+  end
+
+  @impl true
+  def normalize_item(raw_item, _feed, _opts) do
+    {:ok, %Item{uuid: raw_item["id"], title: raw_item["title"]}}
+  end
+end
+```
+
+The example shows the format callbacks; `MyApp.NoticeHandler` must implement
+`Saxy.Handler`, parse the custom XML shape, put the parsed title into
+`state.title`, call the supplied event sink with `{:feed, feed}` before item
+events, and use the format's normalization callbacks to produce
+`FeedReader.Feed` and `FeedReader.Item` values. A custom handler owns the XML
+state and decides when complete raw items are ready to normalize and emit.
+
+Register the module for automatic detection or resolve it by ID:
+
+```elixir
+FeedReader.stream_file("priv/notices.xml", formats: [MyApp.NoticeFormat])
+
+FeedReader.stream_file("priv/notices.xml",
+  format: :notice,
+  formats: [MyApp.NoticeFormat]
+)
+```
+
+The shared parser resource-limit options are passed to custom format callbacks.
+Formats may define extra options of their own. See `FeedReader.Format` for the
+full callback contract.
+
+## Add an HTTP transport
+
+Implement `FeedReader.Transport` and pass the module with `:http_client`:
+
+```elixir
+defmodule MyApp.FeedTransport do
+  @behaviour FeedReader.Transport
+
+  @impl true
+  def request(url, opts) do
+    client = Keyword.fetch!(opts, :my_http_client)
+
+    case client.get(url) do
+      {:ok, status, headers, final_url, raw_body_chunks} ->
+        {:ok,
+         %{
+           status: status,
+           headers: headers,
+           final_url: final_url,
+           body: raw_body_chunks
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+end
+
+FeedReader.fetch_and_parse(url,
+  max_items: 500,
+  http_client: MyApp.FeedTransport,
+  my_http_client: MyHTTPClient
+)
+```
+
+The response map requires `:status`, `:headers`, `:final_url`, and `:body`.
+`body` must be an enumerable of binary chunks. Return the response body without
+decompressing it: the downloader performs decoding, size accounting, and
+checksumming. Preserve redirects in `:final_url`. A 304 response should have an
+empty body and is mapped to `:not_modified`.
+
+The full options list is passed to the custom transport. The downloader itself
+consumes `:previous_checksum` and download-limit options; other options are
+available to the transport. The default `FeedReader.ReqTransport` recognizes
+`:http_options`, `:previous_etag`, `:http_retry_attempts`, and `:retry_delay`.
+
+## Default HTTP behavior
+
+The default transport requests streamed raw bodies and disables automatic
+decompression. It supports conditional ETags through `:previous_etag`, retries
+selected server statuses and most transport errors, and follows at most five
+redirects. TLS alerts and redirect failures are terminal. Gzip and deflate are
+decoded downstream; unknown and stacked content encodings are rejected.
+
+`:http_options` are forwarded to Req, but the transport enforces its raw
+streaming, decompression, retry, and redirect settings. A supplied `:headers`
+list replaces the default user-agent and accepted-encoding headers. See
+`FeedReader.Transport` and `FeedReader.ReqTransport` for details.

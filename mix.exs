@@ -13,6 +13,7 @@ defmodule FeedReader.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      docs: docs(),
       package: package()
     ]
   end
@@ -30,6 +31,31 @@ defmodule FeedReader.MixProject do
       licenses: ["Apache-2.0"],
       links: %{"git" => "https://git.codeup.net/mmacia/feed_reader"}
     }
+
+  defp docs do
+    [
+      main: "readme",
+      extras: [
+        "README.md",
+        "guides/usage.md",
+        "guides/streaming.md",
+        "guides/resource-limits.md",
+        "guides/results.md",
+        "guides/customization.md",
+        "guides/xml-recovery.md"
+      ],
+      groups_for_extras: [
+        Guides: [
+          "guides/usage.md",
+          "guides/streaming.md",
+          "guides/resource-limits.md",
+          "guides/results.md",
+          "guides/customization.md",
+          "guides/xml-recovery.md"
+        ]
+      ]
+    ]
+  end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]

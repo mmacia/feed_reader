@@ -248,6 +248,10 @@ defmodule FeedReader do
   @doc """
   Downloads and collects a feed, requiring a finite positive `:max_items`.
 
+  The default HTTP transport follows redirects automatically, up to five. The
+  final response URL is available in `result.fetch.final_url`. Custom transports
+  control redirect handling and must report the final URL.
+
   Memory use is proportional to the number and size of collected items. The
   collector scans through the terminal parser event and returns no partial
   result on an item-limit breach or parse error.

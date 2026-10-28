@@ -2,7 +2,8 @@
 
 FeedReader fetches and parses RSS, Atom, and RDF feeds into normalized Elixir
 data. It detects formats automatically, recovers from a small set of common XML
-defects, and offers bounded collection as well as lazy event streams.
+defects, and offers collection with an optional item cap as well as lazy event
+streams.
 
 The [canonical repository](https://git.codeup.net/mmacia/feed_reader) is hosted
 on Codeup. Copies on GitHub, GitLab, and other forges are mirrors for broader
@@ -23,25 +24,26 @@ end
 
 ## Quick start
 
-Pass XML directly, or use `parse_file/2` for a local file. Collection APIs
-require a positive `:max_items` limit:
+Pass XML directly, or use `parse_file/2` for a local file. Collection APIs gather
+all accepted items by default; an optional `:max_items` cap stops parsing early:
 
 ```elixir
-{:ok, result} = FeedReader.parse_file("priv/feed.xml", max_items: 500)
+{:ok, result} = FeedReader.parse_file("path/to/feed.xml")
 
 result.feed.title
 Enum.map(result.items, & &1.title)
 ```
 
-For a remote URL, `fetch_and_parse/2` downloads and collects the feed. Its
-`:max_items` limit bounds the number of retained items; use the separate
-download and parser limits when you also need to bound input size and parsing
-resources. The default HTTP transport follows redirects automatically, up to
-five; the final response URL is available in `result.fetch.final_url`.
+For a remote URL, `fetch_and_parse/2` downloads and collects the feed. You can
+set `:max_items` to stop parsing after a given number of accepted items; when
+that happens, `result.item_limit_reached?` is `true`. The complete response is
+downloaded before parsing starts. The default HTTP transport follows redirects
+automatically, up to five; the final response URL is available in
+`result.fetch.final_url`.
 
 ```elixir
 {:ok, result} =
-  FeedReader.fetch_and_parse("https://example.com/feed.xml", max_items: 500)
+  FeedReader.fetch_and_parse("https://example.com/feed.xml")
 
 result.feed.title
 result.fetch.etag
@@ -49,8 +51,8 @@ result.fetch.etag
 
 ## Application configuration
 
-Set stable defaults in your application config. Per-call options override these
-values, and both override FeedReader's built-in defaults:
+Set stable options in your application config. For example, configure an
+optional collection cap alongside other defaults:
 
 ```elixir
 config :feed_reader, :options,
@@ -61,13 +63,18 @@ config :feed_reader, :options,
   http_client: MyApp.FeedTransport
 ```
 
-With `:max_items` configured, collection calls can omit it and use the shared
-limit. A one-off call can override it:
+The configured cap applies to collection calls that omit `:max_items`; per-call
+values override it. If no cap is configured, collection gathers all accepted
+items:
 
 ```elixir
-{:ok, result} = FeedReader.parse_file("priv/feed.xml")
-{:ok, smaller_result} = FeedReader.parse_file("priv/feed.xml", max_items: 100)
+{:ok, result} = FeedReader.parse_file("path/to/feed.xml")
+{:ok, capped_result} = FeedReader.parse_file("path/to/feed.xml", max_items: 100)
 ```
+
+Use `stream_file/2` or `stream/2` to process large feeds incrementally rather
+than collecting all items in memory. `parse_stream/2` still collects its result;
+its input chunks are staged before parsing.
 
 Request-specific options such as `:feed_url`, `:previous_etag`,
 `:previous_checksum`, and `:item_filter` must be supplied per call. See the
@@ -91,8 +98,8 @@ The public API coordinates a small pipeline:
    before Saxy parses the input. Format handlers normalize metadata and items
    into `FeedReader.Feed` and `FeedReader.Item` values.
 4. The parser emits `{:feed, feed}` and `{:item, item}` events. Streaming APIs
-   expose those events lazily; collection APIs gather them into result structs
-   under a finite item limit.
+   expose those events lazily; collection APIs gather all accepted items by
+   default, or stop at an optional item cap.
 
 Remote streaming downloads before returning its session; event parsing then
 reads the staged file lazily. A completed stream releases the temporary file.

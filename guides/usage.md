@@ -2,14 +2,14 @@
 
 FeedReader accepts local XML files, XML binaries, enumerables of XML chunks, and
 remote URLs. Collection APIs return normalized metadata and items together;
-streaming APIs expose the events as they are parsed. Collection requires an
-explicit positive `:max_items` option, supplied per call or through application
-configuration.
+streaming APIs expose the events as they are parsed. Collection gathers all
+accepted items by default; an optional positive `:max_items` cap stops parsing
+after the requested number of accepted items.
 
 ## Configure shared parsing defaults
 
 Set stable options in your application's `config/config.exs`. For example, this
-sets a default collection limit and a lower XML nesting limit:
+sets an optional default collection cap and a lower XML nesting limit:
 
 ```elixir
 config :feed_reader, :options,
@@ -17,26 +17,28 @@ config :feed_reader, :options,
   max_xml_depth: 128
 ```
 
-Calls use the configured values when they omit those options. Per-call options
-override the configured values, which in turn override FeedReader's built-in
-defaults:
+Calls use configured values when they omit those options, and per-call options
+override configured values. If `:max_items` is not configured or passed,
+collection gathers all accepted items:
 
 ```elixir
-{:ok, local_result} = FeedReader.parse_file("priv/feed.xml")
+{:ok, local_result} = FeedReader.parse_file("path/to/feed.xml")
 {:ok, remote_result} = FeedReader.fetch_and_parse("https://example.com/feed.xml")
 
-{:ok, smaller_result} = FeedReader.parse_file("priv/feed.xml", max_items: 100)
+{:ok, smaller_result} = FeedReader.parse_file("path/to/feed.xml", max_items: 100)
 ```
 
 Here, both initial calls use `max_items: 500` and `max_xml_depth: 128`; the last
-call uses a limit of 100 items while retaining the configured XML depth. See the
+call uses a limit of 100 items while retaining the configured XML depth. When
+the cap is reached, `item_limit_reached?` is `true` and the result may contain
+only a prefix of the feed. See the
 [resource limits guide](resource-limits.md) for the available parser and download
 limits.
 
 ## Parse a local file
 
 ```elixir
-{:ok, result} = FeedReader.parse_file("priv/feed.xml", max_items: 500)
+{:ok, result} = FeedReader.parse_file("path/to/feed.xml")
 
 result.feed.title
 result.items
@@ -44,10 +46,10 @@ result.items
 
 The result is a `%FeedReader.ParseResult{feed: feed, items: items}`. The file
 belongs to the caller and is not modified or removed. `:item_filter` can reject
-items before they count toward `:max_items`:
+items before they count toward an optional `:max_items` cap:
 
 ```elixir
-FeedReader.parse_file("priv/feed.xml",
+FeedReader.parse_file("path/to/feed.xml",
   max_items: 500,
   item_filter: &(&1.language == :en)
 )
@@ -57,6 +59,10 @@ FeedReader.parse_file("priv/feed.xml",
 of binary chunks; it writes chunks incrementally to a temporary file, parses
 them, and removes the temporary file on success or failure. Both APIs use the
 same parsing and collection options.
+
+For large feeds, use `stream_file/2` or `stream/2` and process each item event
+instead of collecting every item in memory. `parse_stream/2` still collects the
+result and stages all chunks before parsing.
 
 ## Fetch and parse a remote URL
 
@@ -74,9 +80,9 @@ The returned `%FeedReader.RemoteResult{}` includes a `fetch` record with the
 response ETag, decoded-body checksum, final URL, and HTTP status. The default
 HTTP transport follows up to five redirects automatically. Custom transports
 handle redirects themselves and must report the final URL. Remote collection
-requires `:max_items` even when the server may return an unchanged outcome. The
-item limit bounds the collected list; it does not limit response size or all
-parsing work.
+does not require `:max_items`, including when the server may return an unchanged
+outcome. A configured cap can stop parsing early but does not limit response
+size or network transfer; the response is downloaded first.
 See [Resource limits](resource-limits.md) for the separate download and parser
 budgets.
 
@@ -89,7 +95,6 @@ either or both on the next request:
 
 ```elixir
 opts = [
-  max_items: 500,
   previous_etag: saved_etag,
   previous_checksum: saved_checksum
 ]
@@ -130,12 +135,12 @@ granularity:
 
 ```elixir
 digest =
-  "priv/feed.xml"
+  "path/to/feed.xml"
   |> File.read!()
   |> then(&:crypto.hash(:sha256, &1))
 
 if digest != saved_digest do
-  {:ok, result} = FeedReader.parse_file("priv/feed.xml", max_items: 500)
+  {:ok, result} = FeedReader.parse_file("path/to/feed.xml")
   store(result)
   save_digest(digest)
 end
@@ -151,7 +156,7 @@ FeedReader detects RSS, Atom, and RDF from a bounded prefix. If detection is
 not appropriate for a source, specify a built-in ID or module:
 
 ```elixir
-FeedReader.parse_file("priv/feed.xml", format: :atom, max_items: 500)
+FeedReader.parse_file("path/to/feed.xml", format: :atom)
 ```
 
 Custom formats can also be selected explicitly. See

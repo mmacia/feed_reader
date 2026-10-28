@@ -37,7 +37,7 @@ config :feed_reader, :options,
   max_xml_depth: 128,
   max_compressed_bytes: 10_000_000
 
-FeedReader.parse_file("priv/feed.xml", max_items: 100)
+FeedReader.parse_file("path/to/feed.xml", max_items: 100)
 ```
 
 Per-call values take precedence over application config, which takes precedence
@@ -49,7 +49,7 @@ values are ignored. `:feed_url`, `:previous_etag`, `:previous_checksum`, and
 Example for stricter parsing budgets:
 
 ```elixir
-FeedReader.stream_file("priv/feed.xml",
+FeedReader.stream_file("path/to/feed.xml",
   max_xml_events: 100_000,
   max_xml_depth: 64,
   max_attributes_per_element: 32,
@@ -82,14 +82,18 @@ encodings are rejected.
 ## Collection limits
 
 `parse_file/2`, `parse_binary/2`, `parse_stream/2`, and `fetch_and_parse/2`
-require a positive `:max_items`. The optional one-argument `:item_filter`
-rejects items before they are counted and retained.
+collect all accepted items by default. Supply a positive `:max_items` to stop
+parsing as soon as that many accepted items have been collected. The optional
+one-argument `:item_filter` rejects items before they are counted and retained.
+When the cap is reached, the result has `item_limit_reached?: true`; it may be
+only a prefix of the feed, and the rest of the feed is not parsed or validated.
 
-The item limit bounds retained item count, not input bytes, total parser work,
-or network transfer. For remote feeds, the full response is downloaded before
-parsing. Collection continues consuming parser events and returns no partial
-result if an accepted item exceeds the item limit. Combine `:max_items` with
-download and XML limits when you need those separate guarantees.
+The item limit bounds retained item count, not input bytes or network transfer.
+For remote feeds, the full response is downloaded before parsing. `parse_stream/2`
+also stages all input chunks before parsing. Without a cap, memory use grows with
+the collected items. Use `stream_file/2` or `stream/2` to process large feeds
+incrementally without collecting all items in memory. Combine any collection cap
+with download and XML limits when you need those separate guarantees.
 
 Verified APIs additionally accept `:max_parse_passes`, defaulting to `5`, to
 bound validation and event-delivery passes. An invalid value uses the default.

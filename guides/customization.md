@@ -14,8 +14,8 @@ alone.
 Select a built-in by ID or module:
 
 ```elixir
-FeedReader.parse_file("priv/feed.xml", format: :rss, max_items: 500)
-FeedReader.stream_file("priv/feed.xml", format: FeedReader.Formats.RSS)
+FeedReader.parse_file("path/to/feed.xml", format: :rss, max_items: 500)
+FeedReader.stream_file("path/to/feed.xml", format: FeedReader.Formats.RSS)
 ```
 
 ## Implement a format

@@ -7,15 +7,16 @@ terminal `{:error, reason}` event. Errors that happen before a session can be
 created, such as an unknown format or a failed remote request, are returned
 directly as `{:error, reason}`.
 
-Streaming APIs do not enforce `:max_items`; it applies to collection APIs such as
-`parse_file/2`, `parse_stream/2`, and `fetch_and_parse/2`. A stream emits items as
-the consumer enumerates them. Stop enumeration in the consumer to limit how many
-events are processed.
+Streaming APIs do not enforce `:max_items`; collection APIs such as
+`parse_file/2`, `parse_stream/2`, and `fetch_and_parse/2` collect all accepted
+items by default and can use the option as an early-stop cap. A stream emits
+items as the consumer enumerates them. Stop enumeration in the consumer to limit
+how many events are processed.
 
 ## Stream a local file
 
 ```elixir
-{:ok, session} = FeedReader.stream_file("priv/feed.xml")
+{:ok, session} = FeedReader.stream_file("path/to/feed.xml")
 
 session.events
 |> Enum.each(fn
@@ -57,20 +58,23 @@ An ETag 304 or a matching previous checksum returns
 `{:ok, :not_modified}` or `{:ok, :not_changed}` respectively, instead of a
 session.
 
-## Stream input chunks into a bounded result
+## Collect input chunks into a result
 
 `parse_stream/2` is different from `stream_file/2`: it takes XML chunks but
-collects the result into memory, subject to `:max_items` and parser limits.
-Chunks must be binaries.
+collects the result into memory, optionally stopping parsing at `:max_items`.
+Chunks must be binaries. The chunks are staged to a temporary file before
+parsing, so use `stream_file/2` or `stream/2` to process large feeds
+incrementally.
 
 ```elixir
-chunks = File.stream!("priv/feed.xml", 16_384, [:raw])
-{:ok, result} = FeedReader.parse_stream(chunks, max_items: 500)
+chunks = File.stream!("path/to/feed.xml", 16_384, [:raw])
+{:ok, result} = FeedReader.parse_stream(chunks)
 ```
 
 Chunk input is staged in a library-owned temporary file and cleaned up on
-success and failure. Use `stream_file/2` when you want to process events
-without collecting all items.
+success and failure. If a supplied item cap is reached, the result's
+`item_limit_reached?` field is `true`, and later parser errors are not observed.
+Use `stream_file/2` when you want to process events without collecting all items.
 
 ## Validate before exposing events
 
@@ -82,7 +86,7 @@ delivery passes and defaults to `5` (a value below `2` cannot allow both
 passes).
 
 ```elixir
-{:ok, session} = FeedReader.stream_file_verified("priv/feed.xml")
+{:ok, session} = FeedReader.stream_file_verified("path/to/feed.xml")
 Enum.each(session.events, &process_event/1)
 ```
 

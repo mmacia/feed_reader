@@ -8,11 +8,15 @@ events.
 ## Collection results
 
 - `parse_file/2`, `parse_binary/2`, and `parse_stream/2` return
-  `{:ok, %FeedReader.ParseResult{feed: feed, items: items}}`.
+  `{:ok, %FeedReader.ParseResult{feed: feed, items: items,
+  item_limit_reached?: limit_reached?}}`.
 - `fetch_and_parse/2` returns
-  `{:ok, %FeedReader.RemoteResult{feed: feed, items: items, fetch: fetch}}`.
-- Both collection styles require a positive `:max_items` and return an error
-  without partial data on failure.
+  `{:ok, %FeedReader.RemoteResult{feed: feed, items: items, fetch: fetch,
+  item_limit_reached?: limit_reached?}}`.
+- Collection gathers all accepted items by default. If an optional positive
+  `:max_items` cap is reached, parsing stops and `item_limit_reached?` is `true`;
+  the returned items may be only a prefix of the feed. If the cap is omitted,
+  the field is `false`.
 
 Remote calls may instead return `{:ok, :not_modified}` after a conditional
 HTTP 304 or `{:ok, :not_changed}` after a matching decoded-body checksum.
@@ -72,6 +76,8 @@ for undetected or unregistered formats, `:invalid_url`, `:invalid_path`, HTTP
 status errors, XML parser errors, and `{:resource_limit, option, limit}`.
 Exact transport and parser reasons can depend on the underlying library.
 
-Collection APIs require `:max_items`; exceeding it returns
-`{:error, {:max_items_exceeded, max_items}}` without a partial result. The
-limit controls retained item count, not downloaded bytes or total parsing work.
+Collection APIs accept an optional `:max_items` cap. When reached, collection
+stops successfully with the items gathered so far and sets
+`item_limit_reached?: true`; the rest of the feed is not checked for parse
+errors. The cap controls retained item count, not downloaded bytes or input
+staging. Without a cap, collection retains every accepted item.

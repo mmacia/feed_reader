@@ -26,7 +26,7 @@ end)
 ```
 
 The local file remains caller-owned, even if enumeration stops early. The
-parser runs on demand and only advances as events are requested. `chunk_size`
+parser runs on demand and only advances as events are requested. `:chunk_size`
 controls input chunks and SAX character-data callback sizing.
 
 ## Stream a remote URL
@@ -42,6 +42,9 @@ after
   FeedReader.close(session)
 end
 ```
+
+`Enum.take/2` limits events, including the initial feed-metadata event; it does
+not count only item events.
 
 Remote sessions include a `fetch` record. The remote response is downloaded,
 decoded, checksummed, and staged in an owned temporary file before

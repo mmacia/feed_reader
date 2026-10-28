@@ -1,12 +1,12 @@
 defmodule FeedReader.Collector do
   @moduledoc """
-  Bounded collectors for local feed parsing.
+  Collectors for local feed parsing.
 
   The collector consumes the event stream produced by `FeedReader.Parser` and
-  returns a `FeedReader.ParseResult`. Callers must provide a positive integer
-  `:max_items`; accepted items beyond that limit produce an error instead of a
-  partial result. The parser stops after the feed's root element, so content
-  appended after a complete feed is not parsed.
+  returns a `FeedReader.ParseResult`. Callers may provide a positive integer
+  `:max_items` to stop after collecting that many accepted items. When omitted,
+  all accepted items are collected. The parser stops after the feed's root
+  element, so content appended after a complete feed is not parsed.
 
   Binary and chunk-enumerable inputs are written incrementally to a temporary
   file before parsing. The temporary file is owned and removed by the collector;
@@ -20,7 +20,8 @@ defmodule FeedReader.Collector do
 
   The `:item_filter` option may contain a one-argument function. It is applied
   before items are counted and retained. The result contains normalized feed
-  metadata and the accepted items, or an error without partial data.
+  metadata and the accepted items. When `:max_items` is reached, parsing stops
+  and the result's `item_limit_reached?` field is set to `true`.
   """
   @spec collect(Path.t(), keyword()) :: {:ok, ParseResult.t()} | {:error, term()}
   def collect(path, opts) do
@@ -61,14 +62,14 @@ defmodule FeedReader.Collector do
     end
   end
 
-  @spec collect_events(Enumerable.t(), pos_integer(), keyword()) ::
+  @spec collect_events(Enumerable.t(), pos_integer() | nil, keyword()) ::
           {:ok, ParseResult.t()} | {:error, term()}
   defp collect_events(events, max_items, opts) do
     filter = Keyword.get(opts, :item_filter, fn _item -> true end)
 
     if is_function(filter, 1) do
       events
-      |> Enum.reduce_while({nil, [], 0, nil}, &collect_event(&1, &2, max_items, filter))
+      |> Enum.reduce_while({nil, [], 0, false, nil}, &collect_event(&1, &2, max_items, filter))
       |> collection_result()
     else
       {:error, {:invalid_option, :item_filter}}
@@ -76,51 +77,68 @@ defmodule FeedReader.Collector do
   end
 
   @doc """
-  Validates the required collection limit.
+  Validates an optional collection limit.
 
-  Returns `{:ok, max_items}` for a positive integer and
-  `{:error, {:invalid_option, :max_items}}` for all other values.
+  Returns `{:ok, max_items}` for a positive integer, `{:ok, nil}` when omitted,
+  and `{:error, {:invalid_option, :max_items}}` for all other values.
   """
-  @spec max_items(keyword()) :: {:ok, pos_integer()} | {:error, term()}
+  @spec max_items(keyword()) :: {:ok, pos_integer() | nil} | {:error, term()}
   def max_items(opts) do
-    case Keyword.get(opts, :max_items) do
-      value when is_integer(value) and value > 0 -> {:ok, value}
-      _invalid -> {:error, {:invalid_option, :max_items}}
+    case Keyword.fetch(opts, :max_items) do
+      :error -> {:ok, nil}
+      {:ok, value} when is_integer(value) and value > 0 -> {:ok, value}
+      {:ok, _invalid} -> {:error, {:invalid_option, :max_items}}
     end
   end
 
-  defp collect_event({:feed, feed}, {nil, items, count, error}, _max, _filter),
-    do: {:cont, {feed, items, count, error}}
+  defp collect_event(
+         {:feed, feed},
+         {nil, items, count, limit_reached?, error},
+         _max,
+         _filter
+       ),
+       do: {:cont, {feed, items, count, limit_reached?, error}}
 
   defp collect_event({:feed, _feed}, state, _max, _filter), do: {:cont, state}
 
-  defp collect_event({:item, item}, {feed, items, count, error}, max, filter) do
+  defp collect_event({:item, item}, {feed, items, count, limit_reached?, error}, max, filter) do
     if filter.(item) do
-      state =
-        if count < max do
-          {feed, [item | items], count + 1, error}
-        else
-          {feed, items, count + 1, error || {:max_items_exceeded, max}}
-        end
+      state = {feed, [item | items], count + 1, limit_reached?, error}
 
-      {:cont, state}
+      if max && count + 1 == max do
+        {:halt, {feed, [item | items], count + 1, true, error}}
+      else
+        {:cont, state}
+      end
     else
-      {:cont, {feed, items, count, error}}
+      {:cont, {feed, items, count, limit_reached?, error}}
     end
   end
 
-  defp collect_event({:error, reason}, {feed, items, count, _error}, _max, _filter),
-    do: {:halt, {feed, items, count, reason}}
+  defp collect_event(
+         {:error, reason},
+         {feed, items, count, limit_reached?, _error},
+         _max,
+         _filter
+       ),
+       do: {:halt, {feed, items, count, limit_reached?, reason}}
 
   defp collect_event(_event, state, _max, _filter), do: {:cont, state}
 
-  defp collection_result({_feed, _items, _count, error}) when not is_nil(error),
+  defp collection_result({_feed, _items, _count, _limit_reached?, error}) when not is_nil(error),
     do: {:error, error}
 
-  defp collection_result({nil, _items, _count, _error}), do: {:error, :feed_metadata_missing}
+  defp collection_result({nil, _items, _count, _limit_reached?, _error}),
+    do: {:error, :feed_metadata_missing}
 
-  defp collection_result({feed, items, _count, nil}),
-    do: {:ok, %ParseResult{feed: feed, items: Enum.reverse(items)}}
+  defp collection_result({feed, items, _count, limit_reached?, nil}),
+    do:
+      {:ok,
+       %ParseResult{
+         feed: feed,
+         items: Enum.reverse(items),
+         item_limit_reached?: limit_reached?
+       }}
 
   defp temporary_path do
     path = FeedReader.TempFile.random_file("feed_reader-parse")

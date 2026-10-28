@@ -6,8 +6,12 @@ defmodule FeedReader.CollectorTest do
   @xml ~s(<rss version="2.0"><channel><title>Example</title><item><title>First</title><guid>one</guid></item><item><title>Second</title><guid>two</guid></item></channel></rss>)
 
   test "collects binary XML through the local event stream" do
-    assert {:ok, %ParseResult{feed: %Feed{title: "Example"}, items: items}} =
-             FeedReader.parse_binary(@xml, max_items: 2)
+    assert {:ok,
+            %ParseResult{
+              feed: %Feed{title: "Example"},
+              items: items,
+              item_limit_reached?: false
+            }} = FeedReader.parse_binary(@xml)
 
     assert [%Item{uuid: "one"}, %Item{uuid: "two"}] = items
   end
@@ -28,12 +32,15 @@ defmodule FeedReader.CollectorTest do
     assert File.read!(path) == @xml
   end
 
-  test "requires a positive max_items for every collector" do
-    assert {:error, {:invalid_option, :max_items}} = FeedReader.parse_binary(@xml)
-    assert {:error, {:invalid_option, :max_items}} = FeedReader.parse_file("missing.xml")
-    assert {:error, {:invalid_option, :max_items}} = FeedReader.parse_stream([])
+  test "accepts collection without max_items and validates it when supplied" do
+    assert {:ok, %ParseResult{items: [_first, _second], item_limit_reached?: false}} =
+             FeedReader.parse_binary(@xml)
+
+    assert {:error, :enoent} = FeedReader.parse_file("missing.xml")
+    assert {:ok, %ParseResult{items: [_first, _second]}} = FeedReader.parse_stream([@xml])
     assert {:error, {:invalid_option, :max_items}} = FeedReader.parse_binary(@xml, max_items: 0)
     assert {:error, {:invalid_option, :max_items}} = FeedReader.parse_stream([], max_items: :all)
+    assert {:error, {:invalid_option, :max_items}} = FeedReader.parse_binary(@xml, max_items: nil)
   end
 
   test "propagates local source errors" do
@@ -43,12 +50,21 @@ defmodule FeedReader.CollectorTest do
   test "filters before counting and collecting" do
     filter = fn %Item{uuid: uuid} -> uuid == "two" end
 
-    assert {:ok, %ParseResult{items: [%Item{uuid: "two"}]}} =
+    assert {:ok, %ParseResult{items: [%Item{uuid: "two"}], item_limit_reached?: true}} =
              FeedReader.parse_binary(@xml, max_items: 1, item_filter: filter)
   end
 
-  test "reports an item beyond the bound instead of returning a partial result" do
-    assert {:error, {:max_items_exceeded, 1}} = FeedReader.parse_binary(@xml, max_items: 1)
+  test "stops at the item limit and marks the result as potentially partial" do
+    xml =
+      ~s(<rss version="2.0"><channel><title>Example</title><item><title>First</title><guid>one</guid></item><broken>)
+
+    assert {:ok,
+            %ParseResult{
+              items: [%Item{uuid: "one"}],
+              item_limit_reached?: true
+            }} = FeedReader.parse_binary(xml, max_items: 1)
+
+    assert {:error, _reason} = FeedReader.parse_binary(xml)
   end
 
   test "ignores malformed content after the root element" do

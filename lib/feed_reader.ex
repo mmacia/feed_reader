@@ -104,7 +104,7 @@ defmodule FeedReader do
   """
   @spec detect_format(binary(), keyword()) :: format_id()
   def detect_format(content, opts \\ []) do
-    FeedReader.FormatDetector.detect(content, opts)
+    FeedReader.FormatDetector.detect(content, FeedReader.Options.resolve(opts))
   end
 
   @doc """
@@ -116,7 +116,7 @@ defmodule FeedReader do
   """
   @spec validate(binary(), atom() | module(), keyword()) :: boolean()
   def validate(content, format, opts \\ []) do
-    FeedReader.FormatDetector.validate(content, format, opts)
+    FeedReader.FormatDetector.validate(content, format, FeedReader.Options.resolve(opts))
   end
 
   @doc """
@@ -131,7 +131,7 @@ defmodule FeedReader do
   """
   @spec stream_file(Path.t(), keyword()) :: {:ok, FeedReader.Session.t()} | {:error, term()}
   def stream_file(path, opts \\ []) do
-    FeedReader.Parser.stream_file(path, opts)
+    FeedReader.Parser.stream_file(path, FeedReader.Options.resolve(opts))
   end
 
   @doc """
@@ -147,7 +147,7 @@ defmodule FeedReader do
   @spec stream_file_verified(Path.t(), keyword()) ::
           {:ok, FeedReader.Session.t()} | {:error, term()}
   def stream_file_verified(path, opts \\ []) do
-    FeedReader.VerifiedParser.stream_file(path, opts)
+    FeedReader.VerifiedParser.stream_file(path, FeedReader.Options.resolve(opts))
   end
 
   @doc """
@@ -302,7 +302,7 @@ defmodule FeedReader do
   """
   @spec parse_file(Path.t(), keyword()) :: {:ok, FeedReader.ParseResult.t()} | {:error, term()}
   def parse_file(path, opts \\ []) do
-    FeedReader.Collector.collect(path, opts)
+    FeedReader.Collector.collect(path, FeedReader.Options.resolve(opts))
   end
 
   @doc """
@@ -319,7 +319,7 @@ defmodule FeedReader do
   def parse_binary(content, opts \\ [])
 
   def parse_binary(content, opts) when is_binary(content) do
-    FeedReader.Collector.parse_stream([content], opts)
+    FeedReader.Collector.parse_stream([content], FeedReader.Options.resolve(opts))
   end
 
   def parse_binary(_content, _opts), do: {:error, :invalid_binary}
@@ -340,6 +340,6 @@ defmodule FeedReader do
   @spec parse_stream(Enumerable.t(), keyword()) ::
           {:ok, FeedReader.ParseResult.t()} | {:error, term()}
   def parse_stream(chunks, opts \\ []) do
-    FeedReader.Collector.parse_stream(chunks, opts)
+    FeedReader.Collector.parse_stream(chunks, FeedReader.Options.resolve(opts))
   end
 end

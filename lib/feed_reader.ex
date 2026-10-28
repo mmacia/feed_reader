@@ -31,14 +31,14 @@ defmodule FeedReader do
   These defaults apply unless overridden per call or in application config.
   Resource limits bound retained data and parsing work to avoid memory or CPU
   spikes and make resource use more predictable across feeds.
-  Options described as required have no built-in default. Req and custom
+  Collection options without a limit collect all accepted items. Req and custom
   integration options are defined by their respective integrations.
 
   | Option | Default |
   | --- | --- |
   | `:format` | Automatic detection |
   | `:formats` | `[]` additional formats; RSS, Atom, and RDF are always tried first |
-  | `:max_items` | Required for collection; no built-in default |
+  | `:max_items` | Unset by default (collect all); a positive value stops parsing after that many accepted items |
   | `:item_filter` | Accept all items; per-call only |
   | `:max_detection_bytes` | `65_536` bytes |
   | `:chunk_size` | `65_536` bytes |
@@ -140,8 +140,10 @@ defmodule FeedReader do
   """
 
   @collection_options_doc """
-  - `:max_items` — required positive limit for accepted items; exceeding it
-    returns `{:error, {:max_items_exceeded, max_items}}` without partial data.
+  - `:max_items` — optional positive limit for accepted items. When reached,
+    parsing stops and the result's `item_limit_reached?` field is `true`; the
+    result may contain only a prefix of the feed. If omitted, all accepted items
+    are collected.
   - `:item_filter` — optional one-argument function applied before counting and
     retaining items; invalid values return `{:error, {:invalid_option, :item_filter}}`.
   """
@@ -149,7 +151,8 @@ defmodule FeedReader do
   @streaming_item_limit_doc """
   Streaming APIs do not enforce `:max_items`; it applies only to collection APIs.
   A stream emits items as the consumer enumerates them. Stop enumeration in the
-  consumer to limit how many events are processed.
+  consumer to limit how many events are processed. Use streaming APIs to process
+  large feeds incrementally instead of collecting every item in memory.
   """
 
   @format_options_doc """
@@ -392,20 +395,23 @@ defmodule FeedReader do
   def close(%FeedReader.Session{}), do: :ok
 
   @doc """
-  Downloads and collects a feed, requiring a finite positive `:max_items`.
+  Downloads and collects a feed. `:max_items` may be supplied to stop parsing
+  after collecting that many accepted items.
 
   The default HTTP transport follows redirects automatically, up to five. The
   final response URL is available in `result.fetch.final_url`. Custom transports
   control redirect handling and must report the final URL.
 
-  Memory use is proportional to the number and size of collected items. The
-  collector scans through the terminal parser event and returns no partial
-  result on an item-limit breach or parse error.
+  Memory use is proportional to the number and size of collected items. Without
+  `:max_items`, all accepted items are collected. When the limit is reached, the
+  result is returned with `item_limit_reached?: true`; the parser stops there,
+  so later feed content is not validated. The full remote response is downloaded
+  before parsing begins.
 
   ## Examples
 
       {:ok, result} =
-        FeedReader.fetch_and_parse("https://example.com/feed.xml", max_items: 500)
+        FeedReader.fetch_and_parse("https://example.com/feed.xml")
 
       result.feed.title
       result.fetch.etag
@@ -438,21 +444,24 @@ defmodule FeedReader do
        %FeedReader.RemoteResult{
          feed: result.feed,
          items: result.items,
+         item_limit_reached?: result.item_limit_reached?,
          fetch: session.fetch
        }}
     end
   end
 
   @doc """
-  Collects a caller-owned local XML file into a bounded parse result.
+  Collects a caller-owned local XML file into a parse result.
 
-   The parser stops after the feed's root element, ignoring content appended
-   after a complete feed. An item accepted beyond the limit returns
-  `{:error, {:max_items_exceeded, max_items}}` without partial data.
+  If `:max_items` is supplied, parsing stops as soon as that many accepted items
+  have been collected. The result's `item_limit_reached?` field is `true`, and
+  the rest of the feed is not validated. Without the option, all accepted items
+  are collected. The parser stops after the feed's root element, ignoring
+  content appended after a complete feed.
 
   ## Examples
 
-      {:ok, result} = FeedReader.parse_file("path/to/feed.xml", max_items: 500)
+      {:ok, result} = FeedReader.parse_file("path/to/feed.xml")
       Enum.map(result.items, & &1.title)
 
   ## Options
@@ -467,12 +476,16 @@ defmodule FeedReader do
   end
 
   @doc """
-  Collects XML binary content into a bounded parse result.
+  Collects XML binary content into a parse result.
+
+  `:max_items` is an optional positive limit; when reached, parsing stops and
+  `item_limit_reached?` is set to `true`. Without it, all accepted items are
+  collected.
 
   ## Examples
 
       xml = File.read!("path/to/feed.xml")
-      {:ok, result} = FeedReader.parse_binary(xml, max_items: 500)
+      {:ok, result} = FeedReader.parse_binary(xml)
       result.feed.title
 
   ## Options
@@ -492,16 +505,18 @@ defmodule FeedReader do
   def parse_binary(_content, _opts), do: {:error, :invalid_binary}
 
   @doc """
-  Collects an enumerable of binary XML chunks into a bounded parse result.
+  Collects an enumerable of binary XML chunks into a parse result.
 
   Chunks are written incrementally to a temporary file and then parsed through
   the same event stream used by `parse_file/2`. The temporary file is removed
-  on success and failure.
+  on success and failure. `:max_items` is optional; when reached, parsing stops
+  and `item_limit_reached?` is set to `true`. Input chunks are staged before
+  parsing begins, so use a streaming API to process large feeds incrementally.
 
   ## Examples
 
       chunks = File.stream!("path/to/feed.xml", 16_384, [:raw])
-      {:ok, result} = FeedReader.parse_stream(chunks, max_items: 500)
+      {:ok, result} = FeedReader.parse_stream(chunks)
       length(result.items)
 
   ## Options

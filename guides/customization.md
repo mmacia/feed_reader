@@ -1,7 +1,7 @@
 # Custom formats and transports
 
-FeedReader supports custom format modules and injectable HTTP transports. Both
-extensions are supplied through options on each API call.
+FeedReader supports custom format modules and injectable HTTP transports. Supply
+them per call or configure stable defaults for the application.
 
 ## Format detection and selection
 
@@ -85,9 +85,17 @@ defmodule MyApp.FeedTransport do
 
   @impl true
   def request(url, opts) do
-    request_options = Keyword.get(opts, :http_options, [])
+    request_options =
+      opts
+      |> Keyword.get(:http_options, [])
+      |> Keyword.put_new(:receive_timeout, Keyword.get(opts, :feed_transport_timeout, 15_000))
+      |> Keyword.put(:into, :self)
+      |> Keyword.put(:raw, true)
+      |> Keyword.put(:decode_body, false)
+      |> Keyword.put(:compressed, false)
+      |> Keyword.put(:max_redirects, 5)
 
-    case MyHTTPClient.request(url, request_options) do
+    case Req.run([url: url], request_options) do
       {request, %Req.Response{} = response} ->
         {:ok,
          %{
@@ -104,10 +112,27 @@ defmodule MyApp.FeedTransport do
 end
 
 FeedReader.fetch_and_parse(url,
-  max_items: 500,
-  http_client: MyApp.FeedTransport
+  max_items: 500
 )
 ```
+
+Configure the custom format, transport, and transport-specific timeout in
+`config/config.exs`:
+
+```elixir
+config :feed_reader, :options,
+  formats: [MyApp.NoticeFormat],
+  http_client: MyApp.FeedTransport,
+  feed_transport_timeout: 10_000
+```
+
+Per-call options take precedence over application options. A per-call
+`:formats` list replaces the configured list; built-in formats are still tried
+first. `:http_client` selects the `FeedReader.Transport` implementation. The
+selected module receives the complete option list, including `:http_client` and
+`:feed_transport_timeout`. `:http_options` is a separate list of Req request
+options; in this example, `:feed_transport_timeout` supplies the Req
+`:receive_timeout` unless `:http_options` already sets it.
 
 The response map requires `:status`, `:headers`, `:final_url`, and `:body`.
 `body` must be an enumerable of binary chunks. Return the response body without

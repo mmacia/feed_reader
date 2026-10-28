@@ -2,9 +2,10 @@
 
 FeedReader parses XML incrementally, but it retains feed metadata, the current
 item, pending stream events, and—when collecting—a list of items. Configure
-limits for the resources that matter to your workload. Invalid values generally
-fall back to their defaults; the options below accept non-negative integers
-unless noted.
+limits for the resources that matter to your workload. These limits help avoid
+memory or CPU spikes while parsing and make resource use more predictable across
+feeds. Invalid values generally fall back to their defaults; the options below
+accept non-negative integers unless noted.
 
 ## XML parsing limits
 
@@ -24,6 +25,26 @@ Zero is a valid limit for the non-negative resource budgets. A zero-byte
 metadata or item budget, for example, rejects retained data in that scope.
 Invalid XML-limit values use defaults. An invalid `:max_detection_bytes`
 disables detection; supply a valid explicit `:format` to parse in that case.
+
+## Application configuration
+
+Set resource budgets globally with `:feed_reader, :options` and override them
+for individual calls when needed:
+
+```elixir
+config :feed_reader, :options,
+  max_items: 1_000,
+  max_xml_depth: 128,
+  max_compressed_bytes: 10_000_000
+
+FeedReader.parse_file("priv/feed.xml", max_items: 100)
+```
+
+Per-call values take precedence over application config, which takes precedence
+over built-in defaults. The application value must be a keyword list; malformed
+values are ignored. `:feed_url`, `:previous_etag`, `:previous_checksum`, and
+`:item_filter` are request-specific and cannot be set globally. See
+`FeedReader` for the complete option-default reference.
 
 Example for stricter parsing budgets:
 

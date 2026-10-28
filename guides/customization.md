@@ -85,28 +85,27 @@ defmodule MyApp.FeedTransport do
 
   @impl true
   def request(url, opts) do
-    client = Keyword.fetch!(opts, :my_http_client)
+    request_options = Keyword.get(opts, :http_options, [])
 
-    case client.get(url) do
-      {:ok, status, headers, final_url, raw_body_chunks} ->
+    case MyHTTPClient.request(url, request_options) do
+      {request, %Req.Response{} = response} ->
         {:ok,
          %{
-           status: status,
-           headers: headers,
-           final_url: final_url,
-           body: raw_body_chunks
+           status: response.status,
+           headers: Req.get_headers_list(response),
+           final_url: URI.to_string(request.url),
+           body: if(response.status == 304, do: [], else: response.body)
          }}
 
-      {:error, reason} ->
-        {:error, reason}
+      {_request, error} ->
+        {:error, error}
     end
   end
 end
 
 FeedReader.fetch_and_parse(url,
   max_items: 500,
-  http_client: MyApp.FeedTransport,
-  my_http_client: MyHTTPClient
+  http_client: MyApp.FeedTransport
 )
 ```
 

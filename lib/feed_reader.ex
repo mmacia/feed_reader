@@ -5,6 +5,66 @@ defmodule FeedReader do
   This module exposes format detection, validation, local parsing, and streaming
   helpers. Remote sessions download and checksum into a temporary file before
   exposing their one-pass event stream.
+
+  ## Application configuration
+
+  Configure stable defaults under `:feed_reader, :options`. Per-call options
+  override configured values, which override the defaults below. The application
+  value must be a keyword list; other values are ignored. `:feed_url`,
+  `:previous_etag`, `:previous_checksum`, and `:item_filter` are request-specific
+  and can only be supplied to individual calls. Options owned by custom formats
+  or transports can also be configured and are passed to those integrations.
+
+      config :feed_reader, :options,
+        max_items: 1_000,
+        max_xml_depth: 128,
+        formats: [MyApp.NoticeFormat],
+        http_client: MyApp.FeedTransport
+
+  `:formats` adds custom format modules after the built-ins. `:http_client`
+  selects a custom transport, which receives its own transport-specific options
+  along with the full option list. For Req request options, configure
+  `:http_options` instead.
+
+  ## Option defaults
+
+  These defaults apply unless overridden per call or in application config.
+  Resource limits bound retained data and parsing work to avoid memory or CPU
+  spikes and make resource use more predictable across feeds.
+  Options described as required have no built-in default. Req and custom
+  integration options are defined by their respective integrations.
+
+  | Option | Default |
+  | --- | --- |
+  | `:format` | Automatic detection |
+  | `:formats` | `[]` additional formats; RSS, Atom, and RDF are always tried first |
+  | `:max_items` | Required for collection; no built-in default |
+  | `:item_filter` | Accept all items; per-call only |
+  | `:max_detection_bytes` | `65_536` bytes |
+  | `:chunk_size` | `65_536` bytes |
+  | `:max_xml_events` | `1_000_000` |
+  | `:max_xml_depth` | `256` |
+  | `:max_attributes_per_element` | `128` |
+  | `:max_attribute_bytes` | `65_536` bytes |
+  | `:max_feed_metadata_bytes` | `1_048_576` bytes |
+  | `:max_item_bytes` | `4_194_304` bytes |
+  | `:max_queue_bytes` | `:max_item_bytes` |
+  | `:max_parse_passes` | `5` (verified APIs) |
+  | `:http_client` | `FeedReader.ReqTransport` (remote APIs) |
+  | `:http_options` | `[]`; default transport supplies headers and streaming settings |
+  | `:http_retry_attempts` | `5` (remote APIs) |
+  | `:retry_delay` | `0` milliseconds (remote APIs) |
+  | `:max_compressed_bytes` | `52_428_800` bytes (remote APIs) |
+  | `:max_decoded_bytes` | `52_428_800` bytes (remote APIs) |
+  | `:max_temp_bytes` | `52_428_800` bytes (remote APIs) |
+  | `:max_expansion_ratio` | `100` (remote APIs) |
+  | `:feed_url` | `nil` locally; final response URL remotely (per-call only) |
+  | `:previous_etag` | `nil` (remote, per-call only) |
+  | `:previous_checksum` | `nil` (remote, per-call only) |
+
+  Resource-limit validation, units, and behavior are detailed in the
+  `Resource limits` guide. See each function's options section for option-specific
+  behavior.
   """
 
   @typedoc "`:rss`, `:atom`, `:rdf`, `:unknown`, or a custom format's atom ID."

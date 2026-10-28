@@ -47,6 +47,29 @@ result.feed.title
 result.fetch.etag
 ```
 
+## Application configuration
+
+Set stable defaults in your application config. Per-call options override these
+values, and both override FeedReader's built-in defaults:
+
+```elixir
+config :feed_reader, :options,
+  max_items: 500,
+  max_xml_depth: 128,
+  http_retry_attempts: 3,
+  formats: [MyApp.NoticeFormat],
+  http_client: MyApp.FeedTransport
+```
+
+You can still override a configured value for one call, for example
+`FeedReader.parse_file("priv/feed.xml", max_items: 100)`. Request-specific
+options such as `:feed_url`, `:previous_etag`, `:previous_checksum`, and
+`:item_filter` must be supplied per call. See the [resource limits
+guide](guides/resource-limits.md) and `FeedReader` API docs for defaults and
+details. `:formats` adds custom formats after the built-ins; `:http_client`
+selects a custom transport. Custom transports may define and read their own
+additional options.
+
 ## Architecture
 
 The public API coordinates a small pipeline:

@@ -7,6 +7,11 @@ terminal `{:error, reason}` event. Errors that happen before a session can be
 created, such as an unknown format or a failed remote request, are returned
 directly as `{:error, reason}`.
 
+Streaming APIs do not enforce `:max_items`; it applies to collection APIs such as
+`parse_file/2`, `parse_stream/2`, and `fetch_and_parse/2`. A stream emits items as
+the consumer enumerates them. Stop enumeration in the consumer to limit how many
+events are processed.
+
 ## Stream a local file
 
 ```elixir

@@ -3,7 +3,35 @@
 FeedReader accepts local XML files, XML binaries, enumerables of XML chunks, and
 remote URLs. Collection APIs return normalized metadata and items together;
 streaming APIs expose the events as they are parsed. Collection requires an
-explicit positive `:max_items` option.
+explicit positive `:max_items` option, supplied per call or through application
+configuration.
+
+## Configure shared parsing defaults
+
+Set stable options in your application's `config/config.exs`. For example, this
+sets a default collection limit and a lower XML nesting limit:
+
+```elixir
+config :feed_reader, :options,
+  max_items: 500,
+  max_xml_depth: 128
+```
+
+Calls use the configured values when they omit those options. Per-call options
+override the configured values, which in turn override FeedReader's built-in
+defaults:
+
+```elixir
+{:ok, local_result} = FeedReader.parse_file("priv/feed.xml")
+{:ok, remote_result} = FeedReader.fetch_and_parse("https://example.com/feed.xml")
+
+{:ok, smaller_result} = FeedReader.parse_file("priv/feed.xml", max_items: 100)
+```
+
+Here, both initial calls use `max_items: 500` and `max_xml_depth: 128`; the last
+call uses a limit of 100 items while retaining the configured XML depth. See the
+[resource limits guide](resource-limits.md) for the available parser and download
+limits.
 
 ## Parse a local file
 

@@ -61,14 +61,20 @@ config :feed_reader, :options,
   http_client: MyApp.FeedTransport
 ```
 
-You can still override a configured value for one call, for example
-`FeedReader.parse_file("priv/feed.xml", max_items: 100)`. Request-specific
-options such as `:feed_url`, `:previous_etag`, `:previous_checksum`, and
-`:item_filter` must be supplied per call. See the [resource limits
-guide](guides/resource-limits.md) and `FeedReader` API docs for defaults and
-details. `:formats` adds custom formats after the built-ins; `:http_client`
-selects a custom transport. Custom transports may define and read their own
-additional options.
+With `:max_items` configured, collection calls can omit it and use the shared
+limit. A one-off call can override it:
+
+```elixir
+{:ok, result} = FeedReader.parse_file("priv/feed.xml")
+{:ok, smaller_result} = FeedReader.parse_file("priv/feed.xml", max_items: 100)
+```
+
+Request-specific options such as `:feed_url`, `:previous_etag`,
+`:previous_checksum`, and `:item_filter` must be supplied per call. See the
+[resource limits guide](guides/resource-limits.md) and `FeedReader` API docs for
+defaults and details. `:formats` adds custom formats after the built-ins;
+`:http_client` selects a custom transport. Custom transports may define and read
+their own additional options.
 
 ## Architecture
 

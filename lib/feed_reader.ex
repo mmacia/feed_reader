@@ -146,6 +146,12 @@ defmodule FeedReader do
     retaining items; invalid values return `{:error, {:invalid_option, :item_filter}}`.
   """
 
+  @streaming_item_limit_doc """
+  Streaming APIs do not enforce `:max_items`; it applies only to collection APIs.
+  A stream emits items as the consumer enumerates them. Stop enumeration in the
+  consumer to limit how many events are processed.
+  """
+
   @format_options_doc """
   - `:max_detection_bytes` — positive byte limit for the inspected prefix;
     defaults to `#{@option_defaults[:max_detection_bytes]}`. Invalid values yield
@@ -185,6 +191,8 @@ defmodule FeedReader do
   The returned session emits feed metadata before normalized items. The file is
   never removed by the library, including when enumeration stops early.
 
+  #{String.trim(@streaming_item_limit_doc)}
+
   ## Options
 
   #{String.trim(@parsing_options_doc)}
@@ -199,6 +207,8 @@ defmodule FeedReader do
 
   The source file is never removed. `:max_parse_passes` bounds validation and
   event delivery passes.
+
+  #{String.trim(@streaming_item_limit_doc)}
 
   ## Options
 
@@ -217,6 +227,8 @@ defmodule FeedReader do
   Call `close/1` in an `after` block if enumeration may stop early. Matching
   previous checksums or a conditional HTTP 304 return `:not_changed` or
   `:not_modified` without a session.
+
+  #{String.trim(@streaming_item_limit_doc)}
 
   ## Options
 
@@ -244,6 +256,8 @@ defmodule FeedReader do
   Matching checksums and conditional HTTP 304 responses return `:not_changed`
   and `:not_modified` without a session. Call `close/1` if enumeration may stop
   early.
+
+  #{String.trim(@streaming_item_limit_doc)}
 
   ## Options
 

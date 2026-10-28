@@ -20,9 +20,7 @@ defmodule FeedReader.VerifiedParser do
           session.events,
           fn -> :ok end,
           fn event, state -> {[event], state} end,
-          fn _state ->
-            if resource, do: FeedReader.close(%Session{resource: resource}), else: :ok
-          end
+          fn _state -> close_owned_resource(resource) end
         )
 
       {:ok, %Session{session | events: events, resource: resource}}
@@ -47,6 +45,11 @@ defmodule FeedReader.VerifiedParser do
       _ -> nil
     end
   end
+
+  defp close_owned_resource(nil), do: :ok
+
+  defp close_owned_resource(resource),
+    do: FeedReader.close(%Session{resource: resource})
 
   defp positive_option(opts, key, default) do
     case Keyword.get(opts, key, default) do

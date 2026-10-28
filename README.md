@@ -5,10 +5,11 @@ data. It detects formats automatically, recovers from a small set of common XML
 defects, and offers collection with an optional item cap as well as lazy event
 streams.
 
-The [canonical repository](https://git.codeup.net/mmacia/feed_reader) is hosted
-on Codeup. Copies on GitHub, GitLab, and other forges are mirrors for broader
-distribution; project development and updates are maintained in the canonical
-repository.
+> [!NOTE]
+> The [canonical repository](https://git.codeup.net/mmacia/feed_reader) is hosted
+> on Codeup. Copies on GitHub, GitLab, and other forges are mirrors for broader
+> distribution; project development and updates are maintained in the canonical
+> repository.
 
 ## Installation
 

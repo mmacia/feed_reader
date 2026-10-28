@@ -164,6 +164,14 @@ defmodule FeedReader do
   @doc """
   Detects a format from a bounded binary prefix.
 
+  ## Examples
+
+      xml = ~s(<rss version="2.0"><channel/></rss>)
+      FeedReader.detect_format(xml)
+      #=> :rss
+
+  See `guides/customization.md` for custom format modules.
+
   ## Options
 
   #{@format_options_doc}
@@ -175,6 +183,14 @@ defmodule FeedReader do
 
   @doc """
   Checks only the bounded-prefix signature for a format ID or module.
+
+  ## Examples
+
+      xml = ~s(<rss version="2.0"><channel/></rss>)
+      FeedReader.validate(xml, :rss)
+      #=> true
+
+  See `guides/customization.md` for custom format modules.
 
   ## Options
 
@@ -193,6 +209,11 @@ defmodule FeedReader do
 
   #{String.trim(@streaming_item_limit_doc)}
 
+  ## Examples
+
+      {:ok, session} = FeedReader.stream_file("path/to/feed.xml")
+      Enum.each(session.events, &IO.inspect/1)
+
   ## Options
 
   #{String.trim(@parsing_options_doc)}
@@ -209,6 +230,11 @@ defmodule FeedReader do
   event delivery passes.
 
   #{String.trim(@streaming_item_limit_doc)}
+
+  ## Examples
+
+      {:ok, session} = FeedReader.stream_file_verified("path/to/feed.xml")
+      Enum.each(session.events, &IO.inspect/1)
 
   ## Options
 
@@ -229,6 +255,21 @@ defmodule FeedReader do
   `:not_modified` without a session.
 
   #{String.trim(@streaming_item_limit_doc)}
+
+  ## Examples
+
+      url = "https://example.com/feed.xml"
+      {:ok, session} = FeedReader.stream(url)
+
+      try do
+        session.events
+        |> Enum.take(20)
+        |> Enum.each(&IO.inspect/1)
+      after
+        FeedReader.close(session)
+      end
+
+  See `guides/streaming.md` for event handling and remote-session cleanup.
 
   ## Options
 
@@ -258,6 +299,19 @@ defmodule FeedReader do
   early.
 
   #{String.trim(@streaming_item_limit_doc)}
+
+  ## Examples
+
+      url = "https://example.com/feed.xml"
+      {:ok, session} = FeedReader.stream_verified(url)
+
+      try do
+        Enum.each(session.events, &IO.inspect/1)
+      after
+        FeedReader.close(session)
+      end
+
+  See `guides/streaming.md` for event handling and remote-session cleanup.
 
   ## Options
 
@@ -315,7 +369,21 @@ defmodule FeedReader do
     end
   end
 
-  @doc "Closes an owned remote session; safe after completion or repeated calls."
+  @doc """
+  Closes an owned remote session; safe after completion or repeated calls.
+
+  ## Examples
+
+      {:ok, session} = FeedReader.stream("https://example.com/feed.xml")
+
+      try do
+        Enum.take(session.events, 10)
+      after
+        FeedReader.close(session)
+      end
+
+  See `guides/streaming.md` for remote-session ownership and cleanup.
+  """
   @spec close(FeedReader.Session.t()) :: :ok
   def close(%FeedReader.Session{resource: %{path: _path} = resource}) do
     FeedReader.Downloader.close(resource)
@@ -333,6 +401,14 @@ defmodule FeedReader do
   Memory use is proportional to the number and size of collected items. The
   collector scans through the terminal parser event and returns no partial
   result on an item-limit breach or parse error.
+
+  ## Examples
+
+      {:ok, result} =
+        FeedReader.fetch_and_parse("https://example.com/feed.xml", max_items: 500)
+
+      result.feed.title
+      result.fetch.etag
 
   ## Options
 
@@ -374,6 +450,11 @@ defmodule FeedReader do
    after a complete feed. An item accepted beyond the limit returns
   `{:error, {:max_items_exceeded, max_items}}` without partial data.
 
+  ## Examples
+
+      {:ok, result} = FeedReader.parse_file("path/to/feed.xml", max_items: 500)
+      Enum.map(result.items, & &1.title)
+
   ## Options
 
   #{String.trim(@parsing_options_doc)}
@@ -387,6 +468,12 @@ defmodule FeedReader do
 
   @doc """
   Collects XML binary content into a bounded parse result.
+
+  ## Examples
+
+      xml = File.read!("path/to/feed.xml")
+      {:ok, result} = FeedReader.parse_binary(xml, max_items: 500)
+      result.feed.title
 
   ## Options
 
@@ -410,6 +497,12 @@ defmodule FeedReader do
   Chunks are written incrementally to a temporary file and then parsed through
   the same event stream used by `parse_file/2`. The temporary file is removed
   on success and failure.
+
+  ## Examples
+
+      chunks = File.stream!("path/to/feed.xml", 16_384, [:raw])
+      {:ok, result} = FeedReader.parse_stream(chunks, max_items: 500)
+      length(result.items)
 
   ## Options
 

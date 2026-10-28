@@ -167,6 +167,8 @@ defmodule FeedReader do
   @spec stream(String.t(), keyword()) ::
           {:ok, FeedReader.Session.t() | :not_changed | :not_modified} | {:error, term()}
   def stream(url, opts \\ []) do
+    opts = FeedReader.Options.resolve(opts)
+
     case FeedReader.Downloader.download(url, opts) do
       {:ok, %{path: _path, fetch: _fetch} = download} ->
         create_session(download, opts)
@@ -192,6 +194,8 @@ defmodule FeedReader do
   @spec stream_verified(String.t(), keyword()) ::
           {:ok, FeedReader.Session.t() | :not_changed | :not_modified} | {:error, term()}
   def stream_verified(url, opts \\ []) do
+    opts = FeedReader.Options.resolve(opts)
+
     case FeedReader.Downloader.download(url, opts) do
       {:ok, %{path: path, fetch: fetch} = download} ->
         parser_opts =
@@ -267,6 +271,8 @@ defmodule FeedReader do
   @spec fetch_and_parse(String.t(), keyword()) ::
           {:ok, FeedReader.RemoteResult.t() | :not_changed | :not_modified} | {:error, term()}
   def fetch_and_parse(url, opts \\ []) do
+    opts = FeedReader.Options.resolve(opts)
+
     with {:ok, _max_items} <- FeedReader.Collector.max_items(opts),
          {:ok, outcome} <- stream(url, opts) do
       collect_remote_result(outcome, opts)

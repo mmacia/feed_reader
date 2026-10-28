@@ -87,6 +87,83 @@ defmodule FeedReader.OptionsTest do
     assert {:error, {:invalid_option, :max_items}} = FeedReader.parse_binary(@xml)
   end
 
+  test "remote APIs use configured transport options and allow call overrides" do
+    Application.put_env(:feed_reader, :options,
+      http_client: FeedReader.TestSupport.TransportClient,
+      http_options: [request_tag: :configured],
+      http_retry_attempts: 4,
+      retry_delay: 20,
+      test_pid: self(),
+      response: response(@xml)
+    )
+
+    assert {:ok, session} = FeedReader.stream("https://example.com/feed")
+    assert_receive {:transport_request_options, opts}
+    assert opts[:http_options] == [request_tag: :configured]
+    assert opts[:http_retry_attempts] == 4
+    assert opts[:retry_delay] == 20
+    assert :ok = FeedReader.close(session)
+
+    assert {:ok, verified} =
+             FeedReader.stream_verified("https://example.com/feed", http_retry_attempts: 0)
+
+    assert_receive {:transport_request_options, opts}
+    assert opts[:http_retry_attempts] == 0
+    assert :ok = FeedReader.close(verified)
+  end
+
+  test "remote APIs pass configured retry counts to the Req transport" do
+    Application.put_env(:feed_reader, :options,
+      http_options: [plug: {Req.Test, __MODULE__}],
+      http_retry_attempts: 1
+    )
+
+    Req.Test.expect(__MODULE__, 2, fn conn -> Plug.Conn.send_resp(conn, 500, "error") end)
+
+    assert {:error, :internal_server_error} = FeedReader.stream("https://example.com/feed")
+  end
+
+  test "remote download and collection limits use configured defaults and call overrides" do
+    Application.put_env(:feed_reader, :options,
+      http_client: FeedReader.TestSupport.TransportClient,
+      max_compressed_bytes: 1,
+      max_items: 1,
+      test_pid: self(),
+      response: response(@xml)
+    )
+
+    assert {:error, {:resource_limit, :max_compressed_bytes, 1}} =
+             FeedReader.stream("https://example.com/feed")
+
+    assert {:ok, session} =
+             FeedReader.stream("https://example.com/feed", max_compressed_bytes: 10_000)
+
+    assert :ok = FeedReader.close(session)
+
+    Application.put_env(:feed_reader, :options,
+      http_client: FeedReader.TestSupport.TransportClient,
+      max_items: 1,
+      test_pid: self(),
+      response: response(@xml)
+    )
+
+    assert {:error, {:max_items_exceeded, 1}} =
+             FeedReader.fetch_and_parse("https://example.com/feed")
+
+    assert {:ok, %{items: items}} =
+             FeedReader.fetch_and_parse("https://example.com/feed", max_items: 2)
+
+    assert length(items) == 2
+  end
+
+  defp response(xml),
+    do: %{
+      status: 200,
+      headers: [],
+      final_url: "https://example.com/final.xml",
+      body: [xml]
+    }
+
   defp write_temp(content) do
     path =
       Path.join(

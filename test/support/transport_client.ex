@@ -6,6 +6,7 @@ defmodule FeedReader.TestSupport.TransportClient do
   @impl true
   def request(url, opts) do
     send(opts[:test_pid], {:transport_request, url})
+    send(opts[:test_pid], {:transport_request_options, Keyword.delete(opts, :test_pid)})
 
     case Keyword.get(opts, :request_result) do
       nil ->

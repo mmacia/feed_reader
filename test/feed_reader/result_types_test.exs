@@ -23,6 +23,7 @@ defmodule FeedReader.ResultTypesTest do
 
     assert result.feed.title == "Example"
     assert result.items == [item]
+    refute result.item_limit_reached?
     refute Map.has_key?(result, :fetch)
   end
 
@@ -32,6 +33,7 @@ defmodule FeedReader.ResultTypesTest do
 
     assert result.fetch == fetch
     assert result.items == []
+    refute result.item_limit_reached?
   end
 
   test "sessions distinguish remote and local fetch ownership" do

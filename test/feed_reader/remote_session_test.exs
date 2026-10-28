@@ -33,18 +33,31 @@ defmodule FeedReader.RemoteSessionTest do
     refute File.exists?(path2)
   end
 
-  test "collects remote feeds within the required finite item limit" do
-    assert {:error, {:invalid_option, :max_items}} = fetch_and_parse(@xml, [])
-    refute_received {:transport_request, _url}
+  test "collects remote feeds with an optional item limit" do
+    assert {:ok,
+            %RemoteResult{
+              feed: %Feed{title: "Remote"},
+              items: [_first, _second],
+              item_limit_reached?: false
+            }} = fetch_and_parse(@xml, [])
 
-    assert {:ok, %RemoteResult{feed: %Feed{title: "Remote"}, items: items, fetch: fetch}} =
+    assert {:ok,
+            %RemoteResult{
+              feed: %Feed{title: "Remote"},
+              items: items,
+              item_limit_reached?: true,
+              fetch: fetch
+            }} =
              fetch_and_parse(@xml, max_items: 2)
 
     assert [%Item{uuid: "one"}, %Item{uuid: "two"}] = items
     assert fetch.status == 200
 
     before = download_files()
-    assert {:error, {:max_items_exceeded, 1}} = fetch_and_parse(@xml, max_items: 1)
+
+    assert {:ok, %RemoteResult{items: [%Item{uuid: "one"}], item_limit_reached?: true}} =
+             fetch_and_parse(@xml, max_items: 1)
+
     assert download_files() == before
 
     assert {:ok, %RemoteResult{items: [%Item{uuid: "one"}, %Item{uuid: "two"}]}} =
@@ -92,8 +105,7 @@ defmodule FeedReader.RemoteSessionTest do
   test "covers default options and closing a local session" do
     assert {:error, :invalid_url} = FeedReader.stream(:invalid)
 
-    assert {:error, {:invalid_option, :max_items}} =
-             FeedReader.fetch_and_parse("https://example.com/feed.xml")
+    assert {:error, :invalid_url} = FeedReader.fetch_and_parse(:invalid)
 
     assert :ok = FeedReader.close(%Session{})
   end

@@ -21,11 +21,11 @@ defmodule FeedReader.OptionsTest do
     path = write_temp(@xml)
     on_exit(fn -> File.rm(path) end)
 
-    assert {:error, {:max_items_exceeded, 1}} = FeedReader.parse_binary(@xml)
+    assert {:ok, %{items: [_item], item_limit_reached?: true}} = FeedReader.parse_binary(@xml)
     assert {:ok, %{items: items}} = FeedReader.parse_binary(@xml, max_items: 2)
     assert length(items) == 2
-    assert {:error, {:max_items_exceeded, 1}} = FeedReader.parse_stream([@xml])
-    assert {:error, {:max_items_exceeded, 1}} = FeedReader.parse_file(path)
+    assert {:ok, %{items: [_item], item_limit_reached?: true}} = FeedReader.parse_stream([@xml])
+    assert {:ok, %{items: [_item], item_limit_reached?: true}} = FeedReader.parse_file(path)
     assert {:ok, %{items: items}} = FeedReader.parse_file(path, max_items: 2)
     assert length(items) == 2
   end
@@ -84,7 +84,8 @@ defmodule FeedReader.OptionsTest do
     Application.put_env(:feed_reader, :options, :invalid)
 
     assert FeedReader.detect_format("<rss version='2.0'>") == :rss
-    assert {:error, {:invalid_option, :max_items}} = FeedReader.parse_binary(@xml)
+    assert {:ok, %{items: items, item_limit_reached?: false}} = FeedReader.parse_binary(@xml)
+    assert length(items) == 2
   end
 
   test "remote APIs use configured transport options and allow call overrides" do
@@ -147,7 +148,7 @@ defmodule FeedReader.OptionsTest do
       response: response(@xml)
     )
 
-    assert {:error, {:max_items_exceeded, 1}} =
+    assert {:ok, %{items: [_item], item_limit_reached?: true}} =
              FeedReader.fetch_and_parse("https://example.com/feed")
 
     assert {:ok, %{items: items}} =

@@ -1,7 +1,7 @@
 defmodule FeedReader.Parser do
   @moduledoc "One-pass local feed parsing used by `FeedReader.stream_file/2`."
 
-  alias FeedReader.{FormatRegistry, Recovery, Session}
+  alias FeedReader.{FormatRegistry, Options, Recovery, Session}
 
   @default_chunk_size 65_536
 
@@ -75,7 +75,7 @@ defmodule FeedReader.Parser do
   defp start_parser(input, format, opts, chunk_size) do
     parent = self()
     reference = make_ref()
-    max_queue_bytes = queue_limit(opts)
+    max_queue_bytes = Options.queue_limit(opts)
 
     {pid, monitor} =
       spawn_monitor(fn ->
@@ -86,19 +86,7 @@ defmodule FeedReader.Parser do
         result =
           Saxy.parse_stream(input, format.handler(), state, character_data_max_length: chunk_size)
 
-        case result do
-          {:ok, _state} ->
-            send(parent, {reference, :done})
-
-          {:error, reason} ->
-            send(parent, {reference, {:event, {:error, reason}}})
-
-          {:halt, state, _rest} when is_map(state) and state.root_closed ->
-            send(parent, {reference, :done})
-
-          {:halt, _state, _rest} ->
-            send(parent, {reference, {:event, {:error, :parser_halted}}})
-        end
+        send(parent, {reference, parser_message(format, result)})
       end)
 
     %{reference: reference, pid: pid, monitor: monitor, done?: false}
@@ -156,16 +144,25 @@ defmodule FeedReader.Parser do
     end
   end
 
-  defp queue_limit(opts) do
-    default =
-      case Keyword.get(opts, :max_item_bytes, 4_194_304) do
-        value when is_integer(value) and value >= 0 -> value
-        _invalid -> 4_194_304
-      end
+  defp handler_limit_error(format, %{error: {:resource_limit, _key, _limit} = reason})
+       when format in [FeedReader.Formats.RSS, FeedReader.Formats.Atom, FeedReader.Formats.RDF],
+       do: reason
 
-    case Keyword.get(opts, :max_queue_bytes, default) do
-      value when is_integer(value) and value >= 0 -> value
-      _invalid -> default
+  defp handler_limit_error(_format, _state), do: nil
+
+  defp parser_message(format, {:ok, state}) do
+    case handler_limit_error(format, state) do
+      nil -> :done
+      reason -> {:event, {:error, reason}}
     end
   end
+
+  defp parser_message(_format, {:error, reason}), do: {:event, {:error, reason}}
+
+  defp parser_message(_format, {:halt, state, _rest})
+       when is_map(state) and state.root_closed,
+       do: :done
+
+  defp parser_message(format, {:halt, state, _rest}),
+    do: {:event, {:error, handler_limit_error(format, state) || :parser_halted}}
 end

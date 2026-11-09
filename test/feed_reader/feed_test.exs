@@ -11,6 +11,7 @@ defmodule FeedReader.FeedTest do
              html_url: nil,
              type: nil,
              categories: [],
+             media: [],
              extensions: %{}
            } = %Feed{}
   end

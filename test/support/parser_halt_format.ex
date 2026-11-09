@@ -1,4 +1,6 @@
 defmodule FeedReader.TestSupport.ParserHaltFormat do
+  @moduledoc false
+
   @behaviour FeedReader.Format
 
   @impl true

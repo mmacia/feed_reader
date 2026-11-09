@@ -30,6 +30,16 @@ defmodule FeedReader.OptionsTest do
     assert length(items) == 2
   end
 
+  test "queue limits inherit the effective item limit and accept zero" do
+    assert FeedReader.Options.queue_limit([]) == 4_194_304
+    assert FeedReader.Options.queue_limit(max_item_bytes: 128) == 128
+    assert FeedReader.Options.queue_limit(max_item_bytes: 128, max_queue_bytes: 0) == 0
+    assert FeedReader.Options.queue_limit(max_item_bytes: 128, max_queue_bytes: :invalid) == 128
+
+    assert FeedReader.Options.queue_limit(max_item_bytes: :invalid, max_queue_bytes: :invalid) ==
+             4_194_304
+  end
+
   test "configured formats are replaceable and built-ins remain available" do
     Application.put_env(:feed_reader, :options, formats: [ExternalFormat])
 

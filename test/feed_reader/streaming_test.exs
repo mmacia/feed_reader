@@ -135,6 +135,14 @@ defmodule FeedReader.StreamingTest do
     assert [{:error, {:resource_limit, :max_queue_bytes, 1}}] = Enum.to_list(events)
   end
 
+  test "accepts a zero queue budget and reports it for emitted events" do
+    path = write_temp(@xml)
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, %{events: events}} = FeedReader.stream_file(path, max_queue_bytes: 0)
+    assert [{:error, {:resource_limit, :max_queue_bytes, 0}}] = Enum.to_list(events)
+  end
+
   test "cancelling enumeration stops before the next item is parsed" do
     path = write_temp(@xml)
     on_exit(fn -> File.rm(path) end)
@@ -146,19 +154,30 @@ defmodule FeedReader.StreamingTest do
   end
 
   test "cleans up the parser when the consumer raises" do
-    path = write_temp(@xml)
+    path = write_temp("<external-feed/>")
     on_exit(fn -> File.rm(path) end)
 
-    assert {:ok, %{events: events}} = FeedReader.stream_file(path)
+    assert {:ok, %{events: events}} =
+             FeedReader.stream_file(path,
+               format: :external_test,
+               formats: [FeedReader.TestSupport.ExternalFormat],
+               notify_parser: self(),
+               emit_event: true
+             )
 
     _log =
       capture_log(fn ->
         {:ok, consumer} =
           Task.start(fn -> Enum.each(events, fn _event -> raise "consumer failed" end) end)
 
-        monitor = Process.monitor(consumer)
+        consumer_monitor = Process.monitor(consumer)
+        assert_receive {:parser_pid, parser}, 1_000
+        parser_monitor = Process.monitor(parser)
 
-        assert_receive {:DOWN, ^monitor, :process, ^consumer, {%RuntimeError{}, _stack}}
+        assert_receive {:DOWN, ^consumer_monitor, :process, ^consumer, {%RuntimeError{}, _stack}},
+                       1_000
+
+        assert_receive {:DOWN, ^parser_monitor, :process, ^parser, _reason}, 1_000
       end)
   end
 
@@ -198,6 +217,16 @@ defmodule FeedReader.StreamingTest do
              )
 
     assert [{:error, :parser_halted}] = Enum.to_list(events)
+  end
+
+  test "delivers built-in handler resource limits as terminal error events" do
+    path = write_temp(@xml)
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, %{events: events}} =
+             FeedReader.stream_file(path, format: :rss, max_feed_metadata_bytes: 0)
+
+    assert [{:error, {:resource_limit, :max_feed_metadata_bytes, 0}}] = Enum.to_list(events)
   end
 
   test "stops cleanly when the parser process exits normally" do

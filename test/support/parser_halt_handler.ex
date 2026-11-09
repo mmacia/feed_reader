@@ -1,4 +1,6 @@
 defmodule FeedReader.TestSupport.ParserHaltHandler do
+  @moduledoc false
+
   @behaviour Saxy.Handler
 
   @impl true

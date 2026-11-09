@@ -12,7 +12,7 @@ defmodule FeedReader.ItemTest do
              language: nil,
              published_at: nil,
              canonical_url: nil,
-             alternate: %{},
+             media: [],
              author: nil,
              extensions: %{}
            } = %Item{}

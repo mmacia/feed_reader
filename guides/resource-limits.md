@@ -26,6 +26,15 @@ metadata or item budget, for example, rejects retained data in that scope.
 Invalid XML-limit values use defaults. An invalid `:max_detection_bytes`
 disables detection; supply a valid explicit `:format` to parse in that case.
 
+`:max_queue_bytes` bounds each serialized feed or item event independently. The
+limit also guards normalized media output after URL resolution, so a short
+root-relative source URL can expand against a long feed base. If the media
+budget is exceeded, collection returns
+`{:error, {:resource_limit, :max_queue_bytes, limit}}`; streaming emits the same
+reason as a terminal error event. This event-size budget is separate from the
+XML input limits above. Media candidates are normalized incrementally against
+the budget; the final serialized-size check remains authoritative.
+
 ## Application configuration
 
 Set resource budgets globally with `:feed_reader, :options` and override them

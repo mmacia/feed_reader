@@ -12,6 +12,8 @@ defmodule FeedReader.URLTest do
 
     assert URL.resolve_root_relative(absolute, ["https://example.com"]) == absolute
     assert URL.resolve_root_relative("story", ["https://example.com"]) == "story"
+    assert URL.resolve_root_relative("?page=2", ["https://example.com"]) == "?page=2"
+    assert URL.resolve_root_relative("#section", ["https://example.com"]) == "#section"
   end
 
   test "resolves a root-relative URL against the first absolute base" do
@@ -41,5 +43,25 @@ defmodule FeedReader.URLTest do
 
   test "preserves the URL when URI parsing receives a non-binary base" do
     assert URL.resolve_root_relative("/story", [42]) == "/story"
+  end
+
+  test "retains the base authority while normalizing paths, queries, and fragments" do
+    assert URL.resolve_root_relative("/news/../story?page=2#section", [
+             "https://[::1]:8443/feed?old=1#old"
+           ]) == "https://[::1]:8443/story?page=2#section"
+  end
+
+  test "uses the base scheme for scheme-relative URLs" do
+    assert URL.resolve_root_relative("//cdn.example/image.jpg", ["https://example.com/feed"]) ==
+             "https://cdn.example/image.jpg"
+
+    assert URL.resolve_root_relative("//cdn.example/image.jpg", ["relative"]) ==
+             "//cdn.example/image.jpg"
+  end
+
+  test "falls back to a later absolute base when earlier bases lack a scheme or host" do
+    bases = [nil, 42, "//example.org/feed", "https:///no-host", "http://valid.example:8080/feed"]
+
+    assert URL.resolve_root_relative("/story", bases) == "http://valid.example:8080/story"
   end
 end

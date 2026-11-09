@@ -50,6 +50,21 @@ result.feed.title
 result.fetch.etag
 ```
 
+Built-in RSS, Atom, and RDF formats detect and normalize supported image media
+in the feed and its items. Read feed-level resources from `result.feed.media`
+and item resources from each `item.media` list:
+
+```elixir
+result.feed.media
+Enum.flat_map(result.items, & &1.media)
+```
+
+Supported sources include RSS channel images, Atom feed icons and logos, RDF
+channel image references, image enclosures, Atom external image content, and
+eligible Media RSS content and thumbnails. Results preserve source order; URLs
+are not fetched or validated. See [Results and normalized data](guides/results.md)
+for supported locations and normalization details.
+
 ## Application configuration
 
 Set stable options in your application config. For example, configure an

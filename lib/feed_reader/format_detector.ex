@@ -1,9 +1,12 @@
 defmodule FeedReader.FormatDetector do
   @moduledoc "Internal bounded detection and replay for `FeedReader`."
 
+  alias FeedReader.FormatDetector.RootTag
   alias FeedReader.FormatRegistry
+  alias FeedReader.XML.{Name, NamespaceScope}
 
   @default_max_detection_bytes 65_536
+  @atom_namespace "http://www.w3.org/2005/Atom"
 
   @doc "Returns the detected format id, or `:unknown`, from a bounded prefix."
   @spec detect(binary(), keyword()) :: FeedReader.format_id()
@@ -79,10 +82,29 @@ defmodule FeedReader.FormatDetector do
   defp formats(opts), do: FormatRegistry.formats(Keyword.get(opts, :formats, []))
 
   defp detect_prefix(prefix, opts) do
+    root_format = RootTag.classify(prefix)
+    atom_root? = root_format == :atom
+    rdf_root? = root_format == :rdf
+    # Recognized Atom and RDF roots override earlier substring signatures.
+    namespaced_atom_root? = atom_root? and namespaced_atom_root?(prefix)
+
     opts
     |> formats()
-    |> Enum.find(&matches?(&1, prefix))
+    |> Enum.find(fn format ->
+      cond do
+        format == FeedReader.Formats.RSS and (namespaced_atom_root? or rdf_root?) -> false
+        format == FeedReader.Formats.Atom -> atom_root?
+        format == FeedReader.Formats.RDF -> rdf_root?
+        true -> matches?(format, prefix)
+      end
+    end)
     |> format_id()
+  end
+
+  defp namespaced_atom_root?(prefix) do
+    {:ok, %{name: name, attributes: attributes}} = RootTag.probe(prefix)
+    scope = NamespaceScope.new() |> NamespaceScope.enter(attributes)
+    Name.element(name, scope) == {@atom_namespace, "feed"}
   end
 
   defp consume_chunk(chunk, %{mode: :detect} = state, max_bytes) when is_binary(chunk) do
@@ -111,10 +133,7 @@ defmodule FeedReader.FormatDetector do
             chunk = Map.fetch!(next_state, :replay_chunk)
             {[chunk], {next_continuation, Map.delete(next_state, :replay_chunk)}}
 
-          {:done, _state} ->
-            {:halt, nil}
-
-          {:halted, _state} ->
+          {status, _state} when status in [:done, :halted] ->
             {:halt, nil}
         end
       end,
@@ -132,7 +151,9 @@ defmodule FeedReader.FormatDetector do
   defp format_id(nil), do: :unknown
 
   defp format_id(format) do
-    if function_exported?(format, :id, 0), do: format.id(), else: :unknown
+    if Code.ensure_loaded?(format) and function_exported?(format, :id, 0),
+      do: format.id(),
+      else: :unknown
   end
 
   defp resolve_format(format, formats) when is_atom(format) do

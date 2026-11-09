@@ -7,6 +7,12 @@ terminal `{:error, reason}` event. Errors that happen before a session can be
 created, such as an unknown format or a failed remote request, are returned
 directly as `{:error, reason}`.
 
+The feed event includes a single feed-metadata snapshot. RSS and Atom include
+eligible channel/feed media seen before the first item; RDF uses the channel
+available when the feed event is emitted. Later feed-level media does not update
+that event. Item media is emitted with its item in source encounter order. These
+normalized feed and item values are the same ones returned by collection APIs.
+
 Streaming APIs do not enforce `:max_items`; collection APIs such as
 `parse_file/2`, `parse_stream/2`, and `fetch_and_parse/2` collect all accepted
 items by default and can use the option as an early-stop cap. A stream emits

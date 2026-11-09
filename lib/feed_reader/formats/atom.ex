@@ -1,7 +1,19 @@
 defmodule FeedReader.Formats.Atom do
   @moduledoc "Atom feed detection and normalization."
   @behaviour FeedReader.Format
-  alias FeedReader.{Feed, Item, Language, URL, XMLResourceLimits}
+  alias FeedReader.{
+    Feed,
+    Item,
+    Language,
+    Media,
+    URL,
+    XMLResourceLimits
+  }
+
+  alias FeedReader.XML.NamespaceScope
+
+  @atom_namespace "http://www.w3.org/2005/Atom"
+  @media_rss_namespace "http://search.yahoo.com/mrss/"
 
   @impl true
   def matches_prefix?(prefix), do: Regex.match?(~r/<feed\b/is, prefix)
@@ -15,14 +27,31 @@ defmodule FeedReader.Formats.Atom do
       event_sink: sink,
       opts: opts,
       limits: XMLResourceLimits.new(opts),
+      namespace_scope: NamespaceScope.new(),
       frames: [],
       feed: nil,
+      normalized_feed: nil,
+      feed_candidate_sequence: Media.CandidateSequence.new(),
+      item_candidate_sequence: Media.CandidateSequence.new(),
       root_closed: false,
       error: nil
     }
 
   @impl true
-  def normalize_feed(%{feed: data}, opts) do
+  def normalize_feed(state, opts) do
+    case normalize_feed_result(state, opts) do
+      {:ok, feed} -> feed
+      {:error, _reason} -> normalize_feed_metadata(state, opts)
+    end
+  end
+
+  def normalize_feed_result(state, opts) do
+    feed = normalize_feed_metadata(state, opts)
+    candidates = Map.get(state, :feed_candidate_sequence, Media.CandidateSequence.new())
+    Media.Normalizer.attach_media(:feed, feed, candidates, opts, &normalize_feed_media(&1, feed))
+  end
+
+  defp normalize_feed_metadata(%{feed: data}, opts) do
     data = if is_map(data), do: data, else: %{}
     title = text(data["title"])
     description = text(data["subtitle"])
@@ -39,6 +68,19 @@ defmodule FeedReader.Formats.Atom do
       categories: categories(data)
     }
   end
+
+  defp normalize_feed_media(
+         %Media.Candidate{name: {namespace, local_name}, text: value},
+         feed
+       )
+       when namespace in [nil, @atom_namespace] and local_name in ["icon", "logo"] do
+    if url = Media.Normalizer.normalize_media_url(value, feed) do
+      role = if local_name == "icon", do: :icon, else: :logo
+      %Media{url: url, kind: :image, role: role, mime_type: nil}
+    end
+  end
+
+  defp normalize_feed_media(_candidate, _feed), do: nil
 
   @impl true
   def normalize_item(raw, feed, _opts) do
@@ -68,6 +110,53 @@ defmodule FeedReader.Formats.Atom do
        published_at: published_at(date),
        language: Language.detect([title, content, summary])
      }}
+  end
+
+  def normalize_item_result(raw, candidate_sequence, feed, opts) do
+    {:ok, item} = normalize_item(raw, feed, opts)
+
+    Media.Normalizer.attach_media(
+      :item,
+      item,
+      candidate_sequence,
+      opts,
+      &normalize_item_media(&1, feed)
+    )
+  end
+
+  defp normalize_item_media(
+         %Media.Candidate{name: {namespace, "link"}, attributes: attributes},
+         feed
+       )
+       when namespace in [nil, @atom_namespace] do
+    if attributes[{nil, "rel"}] == "enclosure" do
+      normalize_external_media(attributes, "href", :enclosure, feed)
+    end
+  end
+
+  defp normalize_item_media(
+         %Media.Candidate{name: {namespace, "content"}, attributes: attributes},
+         feed
+       )
+       when namespace in [nil, @atom_namespace],
+       do: normalize_external_media(attributes, "src", :content, feed)
+
+  defp normalize_item_media(
+         %Media.Candidate{name: {@media_rss_namespace, name}} = candidate,
+         feed
+       )
+       when name in ["content", "thumbnail"],
+       do: Media.Normalizer.normalize_media_rss_candidate(candidate, feed)
+
+  defp normalize_item_media(_candidate, _feed), do: nil
+
+  defp normalize_external_media(attributes, url_attribute, role, feed) do
+    with mime_type when is_binary(mime_type) <-
+           attributes[{nil, "type"}] |> Media.Normalizer.normalize_image_mime_type(),
+         url when is_binary(url) <-
+           attributes[{nil, url_attribute}] |> Media.Normalizer.normalize_media_url(feed) do
+      %Media{url: url, kind: :image, role: role, mime_type: mime_type}
+    end
   end
 
   defp categories(data),

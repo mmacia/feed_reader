@@ -47,6 +47,11 @@ defmodule FeedReader.CollectorTest do
     assert {:error, :enoent} = FeedReader.parse_file("/path/that/does/not/exist", max_items: 1)
   end
 
+  test "propagates built-in handler resource limits through collection" do
+    assert {:error, {:resource_limit, :max_feed_metadata_bytes, 0}} =
+             FeedReader.parse_binary(@xml, format: :rss, max_feed_metadata_bytes: 0)
+  end
+
   test "filters before counting and collecting" do
     filter = fn %Item{uuid: uuid} -> uuid == "two" end
 

@@ -11,6 +11,19 @@ removed. Format detection inspects at most `:max_detection_bytes` (65,536 by
 default), so custom `matches_prefix?/1` callbacks must decide from that prefix
 alone.
 
+Atom detection checks the document root and Atom namespace (and supports the
+legacy namespace-less `<feed>` form), so nested or foreign `feed` elements do
+not claim a document. A namespaced Atom root also prevents an earlier RSS
+substring signature from taking priority; RSS retains its existing priority for
+legacy namespace-less signature collisions and other roots.
+
+Automatic RDF detection requires a complete root start tag bound to the RDF
+namespace; the conventional undeclared `<rdf:RDF>` root remains supported.
+Wrong bindings, nested RDF tags, and cut-off root tags return `:unknown`. A
+parsing call with `format: :rdf` bypasses automatic format selection, but the
+RDF handler still applies its namespace-aware parsing rules. `FeedReader.validate/3`
+checks only the explicitly selected format's bounded prefix signature.
+
 Select a built-in by ID or module:
 
 ```elixir

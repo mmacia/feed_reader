@@ -18,7 +18,7 @@ Add FeedReader to your Mix project's dependencies:
 ```elixir
 defp deps do
   [
-    {:feed_reader, "~> 0.2.0"}
+    {:feed_reader, "~> 0.3.0"}
   ]
 end
 ```

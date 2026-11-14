@@ -151,11 +151,20 @@ defmodule FeedReader.Formats.Atom do
   defp normalize_item_media(_candidate, _feed), do: nil
 
   defp normalize_external_media(attributes, url_attribute, role, feed) do
-    with mime_type when is_binary(mime_type) <-
-           attributes[{nil, "type"}] |> Media.Normalizer.normalize_image_mime_type(),
+    with {kind, mime_type} <- normalize_external_media_type(attributes[{nil, "type"}], role),
          url when is_binary(url) <-
            attributes[{nil, url_attribute}] |> Media.Normalizer.normalize_media_url(feed) do
-      %Media{url: url, kind: :image, role: role, mime_type: mime_type}
+      %Media{url: url, kind: kind, role: role, mime_type: mime_type}
+    end
+  end
+
+  defp normalize_external_media_type(mime_type, :enclosure),
+    do: Media.Normalizer.normalize_media_mime_type(mime_type)
+
+  defp normalize_external_media_type(mime_type, :content) do
+    case Media.Normalizer.normalize_image_mime_type(mime_type) do
+      nil -> nil
+      normalized -> {:image, normalized}
     end
   end
 

@@ -58,6 +58,29 @@ defmodule FeedReader.Media.NormalizerTest do
     assert Media.Normalizer.image_mime_type?("Image/PNG; q=0.8")
   end
 
+  test "normalizes MIME types and identifies supported image and audio kinds" do
+    assert Media.Normalizer.normalize_mime_type(" Audio/MPEG ; codecs=mp3 ") == "audio/mpeg"
+    assert Media.Normalizer.normalize_mime_type("Application/Ogg") == "application/ogg"
+
+    assert Media.Normalizer.normalize_media_mime_type(" AUDIO/MPEG; codecs=mp3 ") ==
+             {:audio, "audio/mpeg"}
+
+    assert Media.Normalizer.normalize_media_mime_type("audio/mpeg; malformed parameters") ==
+             {:audio, "audio/mpeg"}
+
+    assert Media.Normalizer.normalize_media_mime_type("IMAGE/SVG+XML; charset=utf-8") ==
+             {:image, "image/svg+xml"}
+
+    assert Media.Normalizer.normalize_media_mime_type("audio/*") == {:audio, "audio/*"}
+    assert Media.Normalizer.normalize_media_mime_type("application/octet-stream") == nil
+    assert Media.Normalizer.normalize_media_mime_type("text/html") == nil
+
+    for mime_type <- [nil, 123, "", "audio", "audio/", "audio/mpeg/extra", "audio/mpeg extra"] do
+      assert Media.Normalizer.normalize_mime_type(mime_type) == nil
+      assert Media.Normalizer.normalize_media_mime_type(mime_type) == nil
+    end
+  end
+
   test "rejects non-image and malformed MIME types" do
     for mime_type <- [nil, 123, "", "image", "image/", "image/png/extra", "image/png extra"] do
       assert Media.Normalizer.normalize_image_mime_type(mime_type) == nil
@@ -78,32 +101,42 @@ defmodule FeedReader.Media.NormalizerTest do
     end
   end
 
-  test "normalizes Media RSS content when image identity is unambiguous" do
+  test "normalizes Media RSS content when image or audio identity is unambiguous" do
     feed = %Feed{html_url: "https://example.com/articles/story"}
 
     candidates = [
-      {%{"medium" => "IMAGE"}, nil},
-      {%{"type" => " IMAGE/JPEG ; q=0.8 "}, "image/jpeg"},
-      {%{"medium" => " image ", "type" => "image/png"}, "image/png"},
-      {%{"medium" => "   ", "type" => "image/gif"}, "image/gif"}
+      {%{"medium" => "IMAGE"}, :image, nil},
+      {%{"type" => " IMAGE/JPEG ; q=0.8 "}, :image, "image/jpeg"},
+      {%{"medium" => " image ", "type" => "image/png"}, :image, "image/png"},
+      {%{"medium" => "   ", "type" => "image/gif"}, :image, "image/gif"},
+      {%{"medium" => "audio"}, :audio, nil},
+      {%{"medium" => " AUDIO ", "type" => "Audio/MPEG; codecs=mp3"}, :audio, "audio/mpeg"},
+      {%{"type" => "audio/aac"}, :audio, "audio/aac"}
     ]
 
-    for {attributes, mime_type} <- candidates do
+    for {attributes, kind, mime_type} <- candidates do
       candidate = media_rss_candidate("content", Map.put(attributes, "url", " /images/a.jpg "))
 
       assert %Media{
                url: "https://example.com/images/a.jpg",
+               kind: ^kind,
                role: :content,
                mime_type: ^mime_type
              } = Media.Normalizer.normalize_media_rss_candidate(candidate, feed)
     end
   end
 
-  test "omits Media RSS content with missing or conflicting image declarations" do
+  test "omits Media RSS content with missing, unsupported, malformed, or conflicting declarations" do
     invalid_attributes = [
       %{},
       %{"medium" => "video", "type" => "image/jpeg"},
-      %{"medium" => "image", "type" => "audio/mpeg"}
+      %{"medium" => "image", "type" => "audio/mpeg"},
+      %{"medium" => "audio", "type" => "image/jpeg"},
+      %{"medium" => "audio", "type" => "application/octet-stream"},
+      %{"type" => "application/octet-stream"},
+      %{"medium" => "image", "type" => ""},
+      %{"medium" => "audio", "type" => "audio/"},
+      %{"medium" => "audio", "type" => "text/html"}
     ]
 
     for attributes <- invalid_attributes do
@@ -134,7 +167,7 @@ defmodule FeedReader.Media.NormalizerTest do
     non_image_thumbnail =
       media_rss_candidate("thumbnail", %{"url" => "thumb.jpg", "type" => "audio/mpeg"})
 
-    assert %Media{mime_type: nil, role: :thumbnail} =
+    assert %Media{kind: :image, mime_type: nil, role: :thumbnail} =
              Media.Normalizer.normalize_media_rss_candidate(non_image_thumbnail, feed)
   end
 
@@ -148,18 +181,22 @@ defmodule FeedReader.Media.NormalizerTest do
     assert Media.Normalizer.normalize_media_rss_candidate(group_candidate, %Feed{}) == nil
   end
 
-  test "accepts the exact lower-bound budget and resets accounting per event" do
-    media = media("https://example.com/image.jpg")
-    limit = Media.Size.add(0, media)
-    normalize = fn :image -> media end
+  test "accepts the exact lower-bound budget for image and audio and resets per event" do
+    for media <- [
+          media("https://example.com/image.jpg"),
+          %Media{url: "https://example.com/audio.mp3", kind: :audio, role: :enclosure}
+        ] do
+      limit = Media.Size.add(0, media)
+      normalize = fn :candidate -> media end
 
-    for _ <- 1..2 do
-      assert {:ok, [^media]} =
-               Media.Normalizer.reduce([:image], [max_queue_bytes: limit], normalize)
+      for _ <- 1..2 do
+        assert {:ok, [^media]} =
+                 Media.Normalizer.reduce([:candidate], [max_queue_bytes: limit], normalize)
+      end
+
+      assert Media.Normalizer.reduce([:candidate], [max_queue_bytes: limit - 1], normalize) ==
+               {:error, {:resource_limit, :max_queue_bytes, limit - 1}}
     end
-
-    assert Media.Normalizer.reduce([:image], [max_queue_bytes: limit - 1], normalize) ==
-             {:error, {:resource_limit, :max_queue_bytes, limit - 1}}
   end
 
   test "attaches media against the matching feed or item event budget" do

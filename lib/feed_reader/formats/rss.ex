@@ -135,11 +135,11 @@ defmodule FeedReader.Formats.RSS do
          feed
        )
        when namespace in [nil, @rss1_namespace] do
-    mime_type = Media.Normalizer.normalize_image_mime_type(candidate.attributes[{nil, "type"}])
-    url = candidate.attributes[{nil, "url"}] |> Media.Normalizer.normalize_media_url(feed)
-
-    if mime_type && url do
-      %Media{url: url, kind: :image, role: :enclosure, mime_type: mime_type}
+    with {kind, mime_type} <-
+           Media.Normalizer.normalize_media_mime_type(candidate.attributes[{nil, "type"}]),
+         url when is_binary(url) <-
+           candidate.attributes[{nil, "url"}] |> Media.Normalizer.normalize_media_url(feed) do
+      %Media{url: url, kind: kind, role: :enclosure, mime_type: mime_type}
     end
   end
 

@@ -1,7 +1,8 @@
 # FeedReader
 
-FeedReader fetches and parses RSS, Atom, and RDF feeds into normalized Elixir
-data. It detects formats automatically, recovers from a small set of common XML
+FeedReader fetches and parses RSS, Atom, and RDF feeds—including podcast feeds—
+into normalized Elixir data. It detects formats automatically, extracts
+supported podcast audio resources, recovers from a small set of common XML
 defects, and offers collection with an optional item cap as well as lazy event
 streams.
 
@@ -51,8 +52,9 @@ result.fetch.etag
 ```
 
 Built-in RSS, Atom, and RDF formats detect and normalize supported image media
-in the feed and its items. Read feed-level resources from `result.feed.media`
-and item resources from each `item.media` list:
+in feeds and items, plus audio resources from RSS enclosures and Atom entry
+enclosure links. Read feed-level resources from `result.feed.media` and item
+resources from each `item.media` list:
 
 ```elixir
 result.feed.media
@@ -60,9 +62,10 @@ Enum.flat_map(result.items, & &1.media)
 ```
 
 Supported sources include RSS channel images, Atom feed icons and logos, RDF
-channel image references, image enclosures, Atom external image content, and
-eligible Media RSS content and thumbnails. Results preserve source order; URLs
-are not fetched or validated. See [Results and normalized data](guides/results.md)
+channel image references, image and audio enclosures, Atom external image
+content, image and audio Media RSS content, and image-only Media RSS thumbnails.
+Unsupported enclosure types are omitted. Results preserve source order; URLs are
+not fetched or validated. See [Results and normalized data](guides/results.md)
 for supported locations and normalization details.
 
 ## Application configuration

@@ -43,6 +43,16 @@ defmodule FeedReader.AtomTest do
 
     assert state.feed["subtitle"] == nil
 
+    assert %Feed{
+             title: "News",
+             html_url: "https://example.com/",
+             type: :atom,
+             media: [
+               %Media{url: "https://example.com/icon.png", role: :icon},
+               %Media{url: "https://cdn.example/logo.svg", role: :logo}
+             ]
+           } = state.normalized_feed
+
     assert_receive {:feed, %Feed{title: "News", description: nil}}
     assert_receive {:item, %Item{title: "First", canonical_url: "https://example.com/first"}}
     assert_receive {:item, %Item{title: "Second", canonical_url: "https://example.com/second"}}
@@ -68,17 +78,20 @@ defmodule FeedReader.AtomTest do
     assert {icon.url, icon.role, logo.url, logo.role} == {"/icon.png", :icon, "/logo.png", :logo}
   end
 
-  test "normalizes Atom image enclosures and external image content in encounter order" do
+  test "normalizes Atom image and audio enclosures with external image content in encounter order" do
     xml = """
     <a:feed xmlns:a="http://www.w3.org/2005/Atom" xmlns:x="urn:foreign">
       <a:title>News</a:title><a:link rel="alternate" href="https://example.com/news/"/>
       <a:entry><a:title>Story</a:title><a:id>story</a:id>
         <a:link rel="enclosure" href=" /cover.jpg " type="IMAGE/JPEG; charset=binary"/>
+        <a:link rel="enclosure" href="/episode.mp3" type="Audio/MPEG; codecs=mp3"/>
         <a:link rel="alternate" href="/ordinary.png" type="image/png"/>
         <a:link rel="enclosure" href="/untyped.jpg"/>
         <a:content src="/body.webp" type="image/WEBP; profile=one"/>
         <a:link rel="enclosure" href="//cdn.example/attached.png" type="image/png"/>
+        <a:link rel="enclosure" href="/binary" type="application/octet-stream"/>
         <a:content src="/page.html" type="text/html"/>
+        <a:content src="/audio-content.mp3" type="audio/mpeg"/>
         <a:content src="  " type="image/png"/>
         <a:content type="image/png">inline content</a:content>
         <x:link rel="enclosure" href="/foreign.jpg" type="image/jpeg"/>
@@ -89,18 +102,19 @@ defmodule FeedReader.AtomTest do
     assert {:ok, %{feed: feed, items: [item]}} = FeedReader.parse_binary(xml)
 
     expected = [
-      {"https://example.com/cover.jpg", :enclosure, "image/jpeg"},
-      {"https://example.com/body.webp", :content, "image/webp"},
-      {"//cdn.example/attached.png", :enclosure, "image/png"}
+      {"https://example.com/cover.jpg", :image, :enclosure, "image/jpeg"},
+      {"https://example.com/episode.mp3", :audio, :enclosure, "audio/mpeg"},
+      {"https://example.com/body.webp", :image, :content, "image/webp"},
+      {"//cdn.example/attached.png", :image, :enclosure, "image/png"}
     ]
 
-    assert Enum.map(item.media, &{&1.url, &1.role, &1.mime_type}) == expected
+    assert Enum.map(item.media, &{&1.url, &1.kind, &1.role, &1.mime_type}) == expected
 
     path = write_temp(xml)
     on_exit(fn -> File.rm(path) end)
     assert {:ok, %{events: events}} = FeedReader.stream_file(path)
     assert [{:feed, ^feed}, {:item, streamed_item}] = Enum.to_list(events)
-    assert Enum.map(streamed_item.media, &{&1.url, &1.role, &1.mime_type}) == expected
+    assert Enum.map(streamed_item.media, &{&1.url, &1.kind, &1.role, &1.mime_type}) == expected
   end
 
   test "normalizes Atom Media RSS resources in encounter order in collection and streaming" do
@@ -110,6 +124,10 @@ defmodule FeedReader.AtomTest do
       <entry><title>Story</title>
         <link rel="enclosure" href="/cover.jpg" type="image/jpeg"/>
         <content src="/external.png" type="image/png"/>
+        <m:content url="/audio.mp3" medium="audio" width="320" height="180">
+          <m:title>Audio</m:title><m:thumbnail url="/audio-thumb.jpg"/>
+        </m:content>
+        <m:content url="/audio.mp3" type="AUDIO/MPEG; codecs=mp3"/>
         <m:content url="/content.jpg" medium="image" type="IMAGE/JPEG; q=1" width="640">
           <m:title>Content</m:title><m:thumbnail url="/nested.jpg"/>
         </m:content>
@@ -128,16 +146,21 @@ defmodule FeedReader.AtomTest do
 
     assert {:ok, %{feed: feed, items: [item]}} = FeedReader.parse_binary(xml)
 
-    assert Enum.map(item.media, &{&1.url, &1.role, &1.mime_type, &1.title, &1.width}) == [
-             {"https://example.com/cover.jpg", :enclosure, "image/jpeg", nil, nil},
-             {"https://example.com/external.png", :content, "image/png", nil, nil},
-             {"https://example.com/content.jpg", :content, "image/jpeg", "Content", 640},
-             {"https://example.com/nested.jpg", :thumbnail, nil, nil, nil},
-             {"https://example.com/group-thumb.jpg", :thumbnail, nil, nil, nil},
-             {"https://example.com/group-content.jpg", :content, "image/png", nil, nil},
-             {"https://example.com/group-nested.jpg", :thumbnail, nil, nil, nil},
-             {"https://example.com/video-thumb.jpg", :thumbnail, nil, nil, nil}
-           ]
+    assert Enum.map(item.media, &{&1.url, &1.kind, &1.role, &1.mime_type, &1.title, &1.width}) ==
+             [
+               {"https://example.com/cover.jpg", :image, :enclosure, "image/jpeg", nil, nil},
+               {"https://example.com/external.png", :image, :content, "image/png", nil, nil},
+               {"https://example.com/audio.mp3", :audio, :content, nil, "Audio", 320},
+               {"https://example.com/audio-thumb.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/audio.mp3", :audio, :content, "audio/mpeg", nil, nil},
+               {"https://example.com/content.jpg", :image, :content, "image/jpeg", "Content",
+                640},
+               {"https://example.com/nested.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/group-thumb.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/group-content.jpg", :image, :content, "image/png", nil, nil},
+               {"https://example.com/group-nested.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/video-thumb.jpg", :image, :thumbnail, nil, nil, nil}
+             ]
 
     path = write_temp(xml)
     on_exit(fn -> File.rm(path) end)
@@ -183,6 +206,38 @@ defmodule FeedReader.AtomTest do
 
     media = %Media{
       url: host <> "photo.jpg",
+      kind: :audio,
+      role: :content,
+      mime_type: "audio/mpeg"
+    }
+
+    limit = :erlang.external_size({:item, item}) + Media.Size.add(0, media) - 3
+
+    xml =
+      "<feed><title>News</title><link rel='alternate' href='#{host}'/><entry><title>Story</title>" <>
+        "<id>story</id><m:content xmlns:m='http://search.yahoo.com/mrss/' url='/photo.jpg' " <>
+        "medium='audio' type='audio/mpeg'/></entry></feed>"
+
+    opts = [format: :atom, max_queue_bytes: limit]
+
+    assert {:error, {:resource_limit, :max_queue_bytes, ^limit}} =
+             FeedReader.parse_binary(xml, opts)
+
+    path = write_temp(xml)
+    on_exit(fn -> File.rm(path) end)
+    assert {:ok, %{events: events}} = FeedReader.stream_file(path, opts)
+
+    assert [{:feed, _feed}, {:error, {:resource_limit, :max_queue_bytes, ^limit}}] =
+             Enum.to_list(events)
+  end
+
+  test "rejects Atom entry media that exceeds the item-event queue budget" do
+    host = "https://" <> String.duplicate("a", 256) <> ".example/"
+    feed = %Feed{html_url: host, type: :atom}
+    item = elem(Atom.normalize_item(%{"id" => "story", "title" => "Story"}, feed, []), 1)
+
+    media = %Media{
+      url: host <> "photo.jpg",
       kind: :image,
       role: :content,
       mime_type: "image/jpeg"
@@ -192,8 +247,7 @@ defmodule FeedReader.AtomTest do
 
     xml =
       "<feed><title>News</title><link rel='alternate' href='#{host}'/><entry><title>Story</title>" <>
-        "<id>story</id><m:content xmlns:m='http://search.yahoo.com/mrss/' url='/photo.jpg' " <>
-        "medium='image' type='image/jpeg'/></entry></feed>"
+        "<id>story</id><content src='/photo.jpg' type='image/jpeg'/></entry></feed>"
 
     opts = [format: :atom, max_queue_bytes: limit]
 

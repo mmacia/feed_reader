@@ -207,9 +207,9 @@ defmodule FeedReader.RSSTest do
     assert [%Media{url: "https://example.com/cover.jpg", role: :enclosure}] = item.media
   end
 
-  test "normalizes image enclosures and Media RSS content on RSS items" do
+  test "normalizes image and audio enclosures and Media RSS content on RSS items" do
     xml =
-      ~s(<rss version="2.0"><channel><title>Example</title><link>https://example.com/news</link><item><title>Story</title><guid>story</guid><enclosure url=" /cover.jpg " type="IMAGE/JPEG; charset=binary"/><enclosure url="//cdn.example/detail.png" type="image/png"/><m:content xmlns:m="http://search.yahoo.com/mrss/" url="/deferred.jpg" type="image/jpeg"/><enclosure url="/audio.mp3" type="audio/mpeg"/><enclosure url="/unknown"/><enclosure url="  " type="image/webp"/><x:enclosure xmlns:x="urn:foreign" url="/foreign.png" type="image/png"/></item><item><title>Second</title><enclosure url="/second.png" type="image/png"/></item></channel></rss>)
+      ~s(<rss version="2.0"><channel><title>Example</title><link>https://example.com/news</link><item><title>Story</title><guid>story</guid><enclosure url=" /cover.jpg " type="IMAGE/JPEG; charset=binary"/><enclosure url="//cdn.example/detail.png" type="image/png"/><m:content xmlns:m="http://search.yahoo.com/mrss/" url="/deferred.jpg" type="image/jpeg"/><enclosure url="/audio.mp3" type="Audio/MPEG; codecs=mp3"/><enclosure url="/binary" type="application/octet-stream"/><enclosure url="/unknown"/><enclosure url="  " type="image/webp"/><x:enclosure xmlns:x="urn:foreign" url="/foreign.png" type="image/png"/></item><item><title>Second</title><enclosure url="/second.png" type="image/png"/></item></channel></rss>)
 
     assert {:ok, %{feed: feed, items: [first, second]}} = FeedReader.parse_binary(xml)
 
@@ -233,14 +233,30 @@ defmodule FeedReader.RSSTest do
                kind: :image,
                role: :content,
                mime_type: "image/jpeg"
+             },
+             %Media{
+               url: "https://example.com/audio.mp3",
+               kind: :audio,
+               role: :enclosure,
+               mime_type: "audio/mpeg"
              }
            ]
 
     assert Enum.map(second.media, & &1.url) == ["https://example.com/second.png"]
 
+    queue_limit =
+      [{:feed, feed}, {:item, first}, {:item, second}]
+      |> Enum.map(&byte_size(:erlang.term_to_binary(&1)))
+      |> Enum.max()
+
+    assert {:ok, %{items: [queued_first, queued_second]}} =
+             FeedReader.parse_binary(xml, max_queue_bytes: queue_limit)
+
+    assert [queued_first.media, queued_second.media] == [first.media, second.media]
+
     path = write_temp(xml)
     on_exit(fn -> File.rm(path) end)
-    assert {:ok, %{events: events}} = FeedReader.stream_file(path)
+    assert {:ok, %{events: events}} = FeedReader.stream_file(path, max_queue_bytes: queue_limit)
 
     assert [{:feed, ^feed}, {:item, streamed_first}, {:item, streamed_second}] =
              Enum.to_list(events)
@@ -251,19 +267,24 @@ defmodule FeedReader.RSSTest do
 
   test "normalizes RSS Media RSS resources in encounter order in collection and streaming" do
     xml =
-      ~s(<rss xmlns:m="#{@media_rss}" xmlns:x="urn:foreign"><channel><title>Example</title><link>https://example.com/news</link><item><title>Story</title><enclosure url="/cover.jpg" type="image/jpeg"/><m:content url="/content.jpg" medium="image" type="IMAGE/JPEG; q=1" width="640"><m:title>Content</m:title><m:thumbnail url="/nested.jpg"/></m:content><m:group><m:thumbnail url="/group-thumb.jpg"/><m:content url="/group-content.jpg" type="image/png"><m:thumbnail url="/group-nested.jpg"/></m:content></m:group><m:content url="/video.mp4" medium="video"><m:thumbnail url="/video-thumb.jpg"/></m:content><description><m:thumbnail url="/ignored.jpg"/></description><x:content url="/foreign.jpg" type="image/png"/></item></channel></rss>)
+      ~s(<rss xmlns:m="#{@media_rss}" xmlns:x="urn:foreign"><channel><title>Example</title><link>https://example.com/news</link><item><title>Story</title><enclosure url="/cover.jpg" type="image/jpeg"/><m:content url="/audio.mp3" medium="audio" width="320" height="180"><m:title>Audio</m:title><m:thumbnail url="/audio-thumb.jpg"/></m:content><m:content url="/audio.mp3" type="audio/mpeg"/><m:content url="/content.jpg" medium="image" type="IMAGE/JPEG; q=1" width="640"><m:title>Content</m:title><m:thumbnail url="/nested.jpg"/></m:content><m:group><m:thumbnail url="/group-thumb.jpg"/><m:content url="/group-content.jpg" type="image/png"><m:thumbnail url="/group-nested.jpg"/></m:content></m:group><m:content url="/video.mp4" medium="video"><m:thumbnail url="/video-thumb.jpg"/></m:content><description><m:thumbnail url="/ignored.jpg"/></description><x:content url="/foreign.jpg" type="image/png"/></item></channel></rss>)
 
     assert {:ok, %{items: [item]}} = FeedReader.parse_binary(xml)
 
-    assert Enum.map(item.media, &{&1.url, &1.role, &1.mime_type, &1.title, &1.width}) == [
-             {"https://example.com/cover.jpg", :enclosure, "image/jpeg", nil, nil},
-             {"https://example.com/content.jpg", :content, "image/jpeg", "Content", 640},
-             {"https://example.com/nested.jpg", :thumbnail, nil, nil, nil},
-             {"https://example.com/group-thumb.jpg", :thumbnail, nil, nil, nil},
-             {"https://example.com/group-content.jpg", :content, "image/png", nil, nil},
-             {"https://example.com/group-nested.jpg", :thumbnail, nil, nil, nil},
-             {"https://example.com/video-thumb.jpg", :thumbnail, nil, nil, nil}
-           ]
+    assert Enum.map(item.media, &{&1.url, &1.kind, &1.role, &1.mime_type, &1.title, &1.width}) ==
+             [
+               {"https://example.com/cover.jpg", :image, :enclosure, "image/jpeg", nil, nil},
+               {"https://example.com/audio.mp3", :audio, :content, nil, "Audio", 320},
+               {"https://example.com/audio-thumb.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/audio.mp3", :audio, :content, "audio/mpeg", nil, nil},
+               {"https://example.com/content.jpg", :image, :content, "image/jpeg", "Content",
+                640},
+               {"https://example.com/nested.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/group-thumb.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/group-content.jpg", :image, :content, "image/png", nil, nil},
+               {"https://example.com/group-nested.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/video-thumb.jpg", :image, :thumbnail, nil, nil, nil}
+             ]
 
     path = write_temp(xml)
     on_exit(fn -> File.rm(path) end)
@@ -279,15 +300,15 @@ defmodule FeedReader.RSSTest do
 
     media = %Media{
       url: host <> "/cover.jpg",
-      kind: :image,
+      kind: :audio,
       role: :content,
-      mime_type: "image/jpeg"
+      mime_type: "audio/mpeg"
     }
 
     limit = :erlang.external_size({:item, item}) + Media.Size.add(0, media) - 3
 
     xml =
-      ~s|<rss><channel><title>Example</title><link>#{host}</link><item><title>Story</title><guid>story</guid><m:content xmlns:m="#{@media_rss}" url="/cover.jpg" medium="image" type="image/jpeg"/></item></channel></rss>|
+      ~s|<rss><channel><title>Example</title><link>#{host}</link><item><title>Story</title><guid>story</guid><m:content xmlns:m="#{@media_rss}" url="/cover.jpg" medium="audio" type="audio/mpeg"/></item></channel></rss>|
 
     opts = [format: :rss, max_queue_bytes: limit]
 
@@ -302,23 +323,23 @@ defmodule FeedReader.RSSTest do
              Enum.to_list(events)
   end
 
-  test "rejects RSS item media that exceeds the item-event queue budget" do
+  test "rejects RSS audio enclosure media that exceeds the item-event queue budget" do
     host = "https://" <> String.duplicate("a", 256) <> ".example"
     feed = %Feed{html_url: host, type: :rss}
     item = elem(RSS.normalize_item(%{"title" => "Story", "guid" => "story"}, feed, []), 1)
 
     media = %Media{
       url: host <> "/cover.jpg",
-      kind: :image,
+      kind: :audio,
       role: :enclosure,
-      mime_type: "image/jpeg"
+      mime_type: "audio/mpeg"
     }
 
     limit = :erlang.external_size({:item, item}) + Media.Size.add(0, media) - 3
 
     xml =
       "<rss><channel><title>Example</title><link>#{host}</link><item><title>Story</title>" <>
-        "<guid>story</guid><enclosure url=\"/cover.jpg\" type=\"image/jpeg\"/></item></channel></rss>"
+        "<guid>story</guid><enclosure url=\"/cover.jpg\" type=\"audio/mpeg\"/></item></channel></rss>"
 
     opts = [format: :rss, max_queue_bytes: limit]
 
@@ -351,6 +372,17 @@ defmodule FeedReader.RSSTest do
     on_exit(fn -> File.rm(path) end)
     assert {:ok, %{events: events}} = FeedReader.stream_file(path, opts)
     assert [{:error, {:resource_limit, :max_queue_bytes, ^limit}}] = Enum.to_list(events)
+  end
+
+  test "collects only channel images before the feed snapshot" do
+    xml =
+      "<rss><channel><image><url>before.jpg</url></image>" <>
+        "<item><title>Story</title></item><image><url>after.jpg</url></image></channel></rss>"
+
+    assert {:halt, state, _} = parse(xml, fn _event -> :ok end)
+    candidates = Media.CandidateSequence.finalize(state.feed_candidate_sequence)
+
+    assert [%{name: {nil, "image"}, children: %{{nil, "url"} => "before.jpg"}}] = candidates
   end
 
   test "stops malformed and over-budget input and rejects orphan SAX events" do

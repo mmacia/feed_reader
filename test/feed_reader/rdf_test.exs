@@ -196,6 +196,10 @@ defmodule FeedReader.RDFTest do
              xmlns:m="http://search.yahoo.com/mrss/" xmlns:x="urn:foreign">
       <channel><title>Example</title><link>https://example.com/news/</link></channel>
       <item><title>Story</title><guid>story</guid>
+        <m:content url="/audio.mp3" medium="audio" width="320" height="180">
+          <m:title>Audio</m:title><m:thumbnail url="/audio-thumb.jpg"/>
+        </m:content>
+        <m:content url="/audio.mp3" type="audio/mpeg"/>
         <m:content url="/content.jpg" medium="image" type="IMAGE/JPEG; q=1" width="640">
           <m:title>Content</m:title><m:thumbnail url="/nested.jpg"/>
         </m:content>
@@ -213,14 +217,19 @@ defmodule FeedReader.RDFTest do
 
     assert {:ok, %{feed: feed, items: [item]}} = FeedReader.parse_binary(xml, format: :rdf)
 
-    assert Enum.map(item.media, &{&1.url, &1.role, &1.mime_type, &1.title, &1.width}) == [
-             {"https://example.com/content.jpg", :content, "image/jpeg", "Content", 640},
-             {"https://example.com/nested.jpg", :thumbnail, nil, nil, nil},
-             {"https://example.com/group-thumb.jpg", :thumbnail, nil, nil, nil},
-             {"https://example.com/group-content.jpg", :content, "image/png", nil, nil},
-             {"https://example.com/group-nested.jpg", :thumbnail, nil, nil, nil},
-             {"https://example.com/video-thumb.jpg", :thumbnail, nil, nil, nil}
-           ]
+    assert Enum.map(item.media, &{&1.url, &1.kind, &1.role, &1.mime_type, &1.title, &1.width}) ==
+             [
+               {"https://example.com/audio.mp3", :audio, :content, nil, "Audio", 320},
+               {"https://example.com/audio-thumb.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/audio.mp3", :audio, :content, "audio/mpeg", nil, nil},
+               {"https://example.com/content.jpg", :image, :content, "image/jpeg", "Content",
+                640},
+               {"https://example.com/nested.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/group-thumb.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/group-content.jpg", :image, :content, "image/png", nil, nil},
+               {"https://example.com/group-nested.jpg", :image, :thumbnail, nil, nil, nil},
+               {"https://example.com/video-thumb.jpg", :image, :thumbnail, nil, nil, nil}
+             ]
 
     path = write_temp(xml)
     on_exit(fn -> File.rm(path) end)
@@ -237,9 +246,9 @@ defmodule FeedReader.RDFTest do
 
     media = %Media{
       url: host <> "cover.jpg",
-      kind: :image,
+      kind: :audio,
       role: :content,
-      mime_type: "image/jpeg"
+      mime_type: "audio/mpeg"
     }
 
     limit = :erlang.external_size({:item, item}) + Media.Size.add(0, media) - 3
@@ -247,7 +256,7 @@ defmodule FeedReader.RDFTest do
     xml =
       "<rdf:RDF><channel><title>Example</title><link>#{host}</link></channel><item>" <>
         "<title>Story</title><guid>story</guid><m:content xmlns:m='http://search.yahoo.com/mrss/' " <>
-        "url='/cover.jpg' medium='image' type='image/jpeg'/></item></rdf:RDF>"
+        "url='/cover.jpg' medium='audio' type='audio/mpeg'/></item></rdf:RDF>"
 
     opts = [format: :rdf, max_queue_bytes: limit]
 

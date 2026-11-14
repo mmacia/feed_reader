@@ -61,7 +61,7 @@ for consumption and cleanup patterns.
 | `language` | Language detected from a bounded sample of item text. |
 | `published_at` | Parsed UTC `DateTime` when available. |
 | `canonical_url` | Item URL; root-relative URLs are resolved against feed URLs. |
-| `media` | Ordered image resources: RSS image enclosures, Atom image enclosure links, and external image content, plus Media RSS content and thumbnails in RSS, Atom, and RDF items. Other enclosure types, ordinary links, and media-like markup outside supported locations are omitted. |
+| `media` | Ordered resources: RSS image/audio enclosures, Atom image/audio enclosure links and external image content, plus Media RSS image/audio content and image-only thumbnails in RSS, Atom, and RDF items. Other enclosure types, ordinary links, and media-like markup outside supported locations are omitted. |
 | `author` | Normalized author name when available. |
 | `extensions` | Extension metadata keyed by namespace URI when retained by the format handler. |
 
@@ -73,11 +73,13 @@ leave an unparseable date as `nil`.
 ## Media values
 
 Each `media` entry is a `%FeedReader.Media{}` with `url`, `kind`, `role`,
-`mime_type`, `title`, `width`, and `height`. This increment extracts images only;
-resources without a usable URL are omitted. Media RSS `content` is included only
-when its image identity is clear, while thumbnails and format-defined image
-resources use their element semantics. Image MIME types are normalized to
-lowercase without parameters; invalid optional dimensions and metadata are `nil`.
+`mime_type`, `title`, `width`, and `height`. RSS enclosures and Atom enclosure
+links support image and audio MIME types; Atom external entry content remains
+image-only. Media RSS content may be image or audio; its kind must be
+unambiguous from `medium` and/or `type`. Media RSS thumbnails remain images.
+Resources without a usable URL are omitted. Image and audio MIME types are
+normalized to lowercase without parameters; invalid optional dimensions and
+metadata are `nil`.
 URLs are trimmed. Single-slash root-relative URLs resolve against the feed's HTML
 URL, then source URL; other relative and scheme-relative references remain as-is.
 Entries preserve encounter order, including interleaved enclosure/content/
@@ -85,16 +87,22 @@ thumbnail types and a content element before its nested thumbnail.
 
 | Role | Sources |
 | --- | --- |
-| `:content` | Image-identified Media RSS content; Atom external entry content with an image MIME type. |
-| `:thumbnail` | Media RSS thumbnail elements, including grouped and content-nested thumbnails. |
-| `:enclosure` | RSS image enclosures and Atom entry links with `rel="enclosure"` and an image MIME type. |
+| `:content` | Image- or audio-identified Media RSS content; Atom external entry content with an image MIME type. |
+| `:thumbnail` | Image-only Media RSS thumbnail elements, including grouped and content-nested thumbnails. |
+| `:enclosure` | RSS image/audio enclosures and Atom entry links with `rel="enclosure"` and an image/audio MIME type. |
 | `:icon`, `:logo` | Atom feed icon/logo; RSS channel image and direct RDF channel image reference are `:logo`. |
 
-Media RSS content requires `medium="image"` with no type or an image type, or
-an image type with no medium. Thumbnails follow their element semantics; their
-MIME type is retained only when it identifies an image. Media is collected only
-from the documented direct feed/item locations, not scraped from HTML or
-unrelated extension markup.
+Media RSS content accepts `medium="image"` or `medium="audio"` with no type or
+the matching MIME type, or an image/audio MIME type with no medium. When both
+are present they must agree. Missing or unsupported declarations, including
+`application/octet-stream`, are omitted rather than guessed. Thumbnails follow
+their element semantics; their MIME type is retained only when it identifies an
+image. Media is collected only from the documented direct feed/item locations,
+not scraped from HTML or unrelated extension markup.
+
+Standard RSS and Atom enclosures require a MIME type whose top-level type is
+`image` or `audio`; other types, including `application/octet-stream`, are
+omitted. Atom external `<content src>` remains image-only.
 
 ## Common errors and limit behavior
 

@@ -21,22 +21,43 @@ defmodule FeedReader.Media.Normalizer do
 
   def normalize_media_url(_url, _feed), do: nil
 
-  @doc "Returns a normalized image MIME type, ignoring parameters, or `nil`."
-  @spec normalize_image_mime_type(String.t() | nil) :: String.t() | nil
-  def normalize_image_mime_type(mime_type) when is_binary(mime_type) do
+  @doc "Returns a normalized MIME type, ignoring parameters, or `nil`."
+  @spec normalize_mime_type(String.t() | nil) :: String.t() | nil
+  def normalize_mime_type(mime_type) when is_binary(mime_type) do
     [type_subtype | _parameters] = String.split(mime_type, ";", parts: 2)
     type_subtype = type_subtype |> String.trim() |> String.downcase()
 
     case String.split(type_subtype, "/", parts: 2) do
-      ["image", subtype] ->
-        if Regex.match?(@mime_token, subtype), do: type_subtype
+      [type, subtype] ->
+        if Regex.match?(@mime_token, type) and Regex.match?(@mime_token, subtype),
+          do: type <> "/" <> subtype
 
-      _other_type ->
+      _invalid ->
         nil
     end
   end
 
-  def normalize_image_mime_type(_mime_type), do: nil
+  def normalize_mime_type(_mime_type), do: nil
+
+  @doc "Returns the supported image or audio kind and its normalized MIME type."
+  @spec normalize_media_mime_type(String.t() | nil) ::
+          {:image | :audio, String.t()} | nil
+  def normalize_media_mime_type(mime_type) do
+    case normalize_mime_type(mime_type) do
+      "image/" <> _ = normalized -> {:image, normalized}
+      "audio/" <> _ = normalized -> {:audio, normalized}
+      _unsupported -> nil
+    end
+  end
+
+  @doc "Returns a normalized image MIME type, ignoring parameters, or `nil`."
+  @spec normalize_image_mime_type(String.t() | nil) :: String.t() | nil
+  def normalize_image_mime_type(mime_type) do
+    case normalize_media_mime_type(mime_type) do
+      {:image, normalized} -> normalized
+      _other_kind -> nil
+    end
+  end
 
   @doc "Returns whether a MIME type identifies an image."
   @spec image_mime_type?(term()) :: boolean()
@@ -62,7 +83,7 @@ defmodule FeedReader.Media.Normalizer do
         feed
       ) do
     case content_mime_type(candidate) do
-      {:ok, mime_type} -> media_rss_resource(candidate, :content, mime_type, feed)
+      {:ok, kind, mime_type} -> media_rss_resource(candidate, :content, kind, mime_type, feed)
       :skip -> nil
     end
   end
@@ -72,7 +93,7 @@ defmodule FeedReader.Media.Normalizer do
         feed
       ) do
     mime_type = normalize_image_mime_type(attribute(candidate, "type"))
-    media_rss_resource(candidate, :thumbnail, mime_type, feed)
+    media_rss_resource(candidate, :thumbnail, :image, mime_type, feed)
   end
 
   def normalize_media_rss_candidate(_candidate, _feed), do: nil
@@ -138,18 +159,28 @@ defmodule FeedReader.Media.Normalizer do
   defp content_mime_type(candidate) do
     medium = candidate |> attribute("medium") |> normalize_medium()
     raw_mime_type = attribute(candidate, "type")
-    mime_type = normalize_image_mime_type(raw_mime_type)
+    media_type = normalize_media_mime_type(raw_mime_type)
 
     cond do
-      not is_nil(medium) and medium != "image" -> :skip
-      not is_nil(raw_mime_type) and is_nil(mime_type) -> :skip
-      medium == "image" -> {:ok, mime_type}
-      is_nil(medium) and not is_nil(mime_type) -> {:ok, mime_type}
-      true -> :skip
+      not is_nil(medium) and medium not in ["image", "audio"] -> :skip
+      not is_nil(raw_mime_type) and is_nil(media_type) -> :skip
+      medium == "image" -> content_media_for_medium(:image, media_type)
+      medium == "audio" -> content_media_for_medium(:audio, media_type)
+      is_nil(medium) -> content_media_without_medium(media_type)
     end
   end
 
-  defp media_rss_resource(candidate, role, mime_type, feed) do
+  defp content_media_for_medium(kind, nil), do: {:ok, kind, nil}
+
+  defp content_media_for_medium(kind, {kind, mime_type}),
+    do: {:ok, kind, mime_type}
+
+  defp content_media_for_medium(_kind, _other_media_type), do: :skip
+
+  defp content_media_without_medium({kind, mime_type}), do: {:ok, kind, mime_type}
+  defp content_media_without_medium(nil), do: :skip
+
+  defp media_rss_resource(candidate, role, kind, mime_type, feed) do
     url = candidate |> attribute("url") |> normalize_media_url(feed)
 
     if is_nil(url) do
@@ -157,7 +188,7 @@ defmodule FeedReader.Media.Normalizer do
     else
       %Media{
         url: url,
-        kind: :image,
+        kind: kind,
         role: role,
         mime_type: mime_type,
         title: candidate.title,

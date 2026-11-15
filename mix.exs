@@ -69,7 +69,7 @@ defmodule FeedReader.MixProject do
       {:html_sanitize_ex, "~> 1.5.5"},
       {:plug, "~> 1.0", only: :test},
       {:req, "~> 0.7.5"},
-      {:saxy, "~> 1.6"},
+      {:saxy, "~> 1.7"},
       {:tongue, "~> 2.3.0"}
     ]
   end

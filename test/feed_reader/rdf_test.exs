@@ -34,6 +34,35 @@ defmodule FeedReader.RDFTest do
     assert_receive {:item, %Item{title: "Title only", content_full: nil, content_summary: nil}}
   end
 
+  test "parses RDF dc:date values with non-UTC ISO-8601 offsets" do
+    xml = """
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+             xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <item><title>First</title><dc:date>2026-10-20T21:18:39+09:00</dc:date></item>
+      <item><title>Second</title><dc:date>2026-10-20T22:00:00+09:00</dc:date></item>
+    </rdf:RDF>
+    """
+
+    assert {:ok,
+            %{
+              items: [
+                %Item{published_at: ~U[2026-10-20 12:18:39Z]},
+                %Item{published_at: ~U[2026-10-20 13:00:00Z]}
+              ]
+            }} = FeedReader.parse_binary(xml, format: :rdf)
+  end
+
+  test "parses non-ISO RDF dates supported by DateTimeParser" do
+    xml = """
+    <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <item><title>Legacy date</title><dc:date>Wed, 02 Oct 2002 13:00:00 GMT</dc:date></item>
+    </rdf:RDF>
+    """
+
+    assert {:ok, %{items: [%Item{published_at: ~U[2002-10-02 13:00:00Z]}]}} =
+             FeedReader.parse_binary(xml, format: :rdf)
+  end
+
   test "preserves scalar and repeated child shapes in RDF channel data" do
     sink = fn event -> send(self(), event) end
 

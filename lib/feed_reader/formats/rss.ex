@@ -202,9 +202,46 @@ defmodule FeedReader.Formats.RSS do
   defp published_at(nil), do: nil
 
   defp published_at(value) do
-    case DateTimeParser.parse(value, to_utc: true) do
-      {:ok, %DateTime{} = date} -> date
-      _invalid -> nil
+    case DateTimeParser.parse(value, to_utc: true, assume_time: true) do
+      {:ok, %DateTime{} = date} ->
+        date
+
+      {:ok, %NaiveDateTime{} = date} ->
+        case numeric_offset_seconds(value) do
+          {:ok, offset} -> datetime_with_offset(date, offset)
+          :absent -> datetime_with_offset(date, 0)
+          :invalid -> nil
+        end
+
+      _invalid ->
+        nil
     end
+  end
+
+  defp numeric_offset_seconds(value) do
+    case Regex.run(
+           ~r/(?:\s|T\d{2}:\d{2}:\d{2}(?:\.\d+)?)([+-])(\d{2}):?(\d{2})\s*$/,
+           value
+         ) do
+      [_, sign, hours, minutes] ->
+        hours = String.to_integer(hours)
+        minutes = String.to_integer(minutes)
+
+        if hours <= 23 and minutes <= 59 do
+          seconds = (hours * 60 + minutes) * 60
+          {:ok, if(sign == "-", do: -seconds, else: seconds)}
+        else
+          :invalid
+        end
+
+      _ ->
+        :absent
+    end
+  end
+
+  defp datetime_with_offset(date, offset) do
+    date
+    |> DateTime.from_naive!("Etc/UTC")
+    |> DateTime.add(-offset, :second)
   end
 end

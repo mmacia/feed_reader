@@ -18,6 +18,82 @@ defmodule FeedReader.RSSTest do
     assert {:halt, _, _} = parse("<rss version='2.0'><channel/></rss>", sink)
   end
 
+  test "parses RSS pubDate values with numeric timezone offsets" do
+    xml = """
+    <rss version="2.0"><channel>
+      <item><title>Positive offset</title><pubDate>Tue, 20 Oct 2026 16:01:40 +0200</pubDate></item>
+      <item><title>Negative offset</title><pubDate>Tue, 20 Oct 2026 16:01:40 -0430</pubDate></item>
+      <item><title>UTC offset</title><pubDate>Tue, 20 Oct 2026 16:01:40 +0000</pubDate></item>
+      <item><title>Date only</title><pubDate>19 Oct, 2026 +0530</pubDate></item>
+    </channel></rss>
+    """
+
+    assert {:ok,
+            %{
+              items: [
+                %Item{published_at: ~U[2026-10-20 14:01:40Z]},
+                %Item{published_at: ~U[2026-10-20 20:31:40Z]},
+                %Item{published_at: ~U[2026-10-20 16:01:40Z]},
+                %Item{published_at: ~U[2026-10-18 18:30:00Z]}
+              ]
+            }} = FeedReader.parse_binary(xml, format: :rss)
+  end
+
+  test "uses an item's GMT pubDate rather than the channel pubDate" do
+    xml = """
+    <rss version="2.0"><channel>
+      <title>Example</title>
+      <pubDate>Tue, 20 Oct 2026 15:56:59 GMT</pubDate>
+      <item>
+        <title>Story</title>
+        <pubDate>Fri, 02 Oct 2026 09:20:00 GMT</pubDate>
+      </item>
+    </channel></rss>
+    """
+
+    assert {:ok, %{items: [%Item{published_at: ~U[2026-10-02 09:20:00Z]}]}} =
+             FeedReader.parse_binary(xml, format: :rss)
+  end
+
+  test "assumes UTC for timezone-less RSS dates and rejects invalid offsets" do
+    xml = """
+    <rss version="2.0"><channel>
+      <item><title>No offset</title><pubDate>Tue, 20 Oct 2026 16:01:40</pubDate></item>
+      <item><title>Invalid offset</title><pubDate>Tue, 20 Oct 2026 16:01:40 +2460</pubDate></item>
+    </channel></rss>
+    """
+
+    assert {:ok,
+            %{
+              items: [
+                %Item{published_at: ~U[2026-10-20 16:01:40Z]},
+                %Item{published_at: nil}
+              ]
+            }} = FeedReader.parse_binary(xml, format: :rss)
+  end
+
+  test "parses timezone-less ISO-style RSS dates as UTC" do
+    xml = """
+    <rss version="2.0"><channel>
+      <item><title>Story</title><pubDate>2026-10-19 22:20:14</pubDate></item>
+    </channel></rss>
+    """
+
+    assert {:ok, %{items: [%Item{published_at: ~U[2026-10-19 22:20:14Z]}]}} =
+             FeedReader.parse_binary(xml, format: :rss)
+  end
+
+  test "falls back to the Dublin Core date when pubDate is blank" do
+    xml = """
+    <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel>
+      <item><title>Story</title><pubDate> </pubDate><dc:date>2026-10-19 22:20:14</dc:date></item>
+    </channel></rss>
+    """
+
+    assert {:ok, %{items: [%Item{published_at: ~U[2026-10-19 22:20:14Z]}]}} =
+             FeedReader.parse_binary(xml, format: :rss)
+  end
+
   test "snapshots and normalizes the feed once for multiple items" do
     sink = fn event -> send(self(), event) end
 

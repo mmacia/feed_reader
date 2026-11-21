@@ -166,9 +166,15 @@ defmodule FeedReader.Formats.RDF do
   defp published_at(nil), do: DateTime.utc_now(:second)
 
   defp published_at(value) do
-    case DateTimeParser.parse(value, to_utc: true) do
-      {:ok, %DateTime{} = date} -> date
-      _invalid -> DateTime.utc_now(:second)
+    case DateTime.from_iso8601(value) do
+      {:ok, date, _offset} ->
+        date
+
+      {:error, _reason} ->
+        case DateTimeParser.parse(value, to_utc: true) do
+          {:ok, %DateTime{} = date} -> date
+          _invalid -> DateTime.utc_now(:second)
+        end
     end
   end
 end

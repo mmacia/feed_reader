@@ -28,6 +28,42 @@ defmodule FeedReader.AtomTest do
     assert_receive {:item, %Item{title: "12345", content_summary: "12345"}}
   end
 
+  test "parses Atom timestamps with explicit UTC offsets" do
+    xml = """
+    <feed><entry><title>Published date</title>
+      <published>2026-10-19T08:12:15-04:00</published>
+      <updated>2026-10-19T09:12:15-04:00</updated>
+    </entry><entry><title>Updated fallback</title>
+      <updated>2026-10-19T08:12:15-04:00</updated>
+    </entry></feed>
+    """
+
+    assert {:ok,
+            %{
+              items: [
+                %Item{published_at: ~U[2026-10-19 12:12:15Z]},
+                %Item{published_at: ~U[2026-10-19 12:12:15Z]}
+              ]
+            }} = FeedReader.parse_binary(xml)
+  end
+
+  test "parses UTC dates and offsets separated by whitespace" do
+    xml = """
+    <feed>
+      <entry><title>UTC date</title><published>2026-07-28T00:00:00Z</published></entry>
+      <entry><title>Spaced offset</title><published>2026-10-17T17:35:00 +0200</published></entry>
+    </feed>
+    """
+
+    assert {:ok,
+            %{
+              items: [
+                %Item{published_at: ~U[2026-07-28 00:00:00Z]},
+                %Item{published_at: ~U[2026-10-17 15:35:00Z]}
+              ]
+            }} = FeedReader.parse_binary(xml)
+  end
+
   test "snapshots and normalizes the feed once for multiple entries" do
     sink = fn event -> send(self(), event) end
 

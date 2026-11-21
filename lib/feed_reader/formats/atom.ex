@@ -210,7 +210,15 @@ defmodule FeedReader.Formats.Atom do
   defp blank_to_nil(value), do: if(String.trim(value) == "", do: nil, else: String.trim(value))
   defp published_at(nil), do: nil
 
-  defp published_at(value), do: DateTimeParser.parse(value, to_utc: true) |> parsed_date()
+  defp published_at(value) do
+    value = String.replace(value, ~r/\s+(?=[+-]\d{2}:?\d{2}$)/, "")
+
+    case DateTime.from_iso8601(value) do
+      {:ok, date, _offset} -> DateTime.shift_zone(date, "Etc/UTC") |> parsed_date()
+      {:error, _reason} -> DateTimeParser.parse(value, to_utc: true) |> parsed_date()
+    end
+  end
+
   defp parsed_date({:ok, %DateTime{} = date}), do: date
   defp parsed_date(_result), do: nil
 end

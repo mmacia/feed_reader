@@ -1,11 +1,20 @@
 defmodule FeedReader.Session do
   @moduledoc """
-  A one-pass event stream over a feed.
+  An event stream over a feed, backed by a local or library-owned XML file.
 
-  Remote sessions own the temporary source used by the event stream and must
-  be closed by callers in an `after` block when enumeration is not completed.
-  `FeedReader.close/1` is idempotent. Local sessions have no HTTP metadata and
-  therefore set `fetch` to `nil`; their caller-owned source is never removed.
+  Local sessions, created by `FeedReader.stream_file/2` and
+  `FeedReader.stream_file_verified/2`, read the caller's file and are
+  re-enumerable. That file is never removed.
+
+  Default remote sessions are one-pass. Fully consuming the events removes the
+  library-owned temporary file; call `FeedReader.close/1` in an `after` block
+  when enumeration may stop early. Replayable remote sessions
+  (`:replayable: true`) retain the owned file after every parsing pass, so
+  `events` can be enumerated again from the beginning. Their file is removed
+  only by `FeedReader.close/1`, which is idempotent.
+
+  Remote sessions include HTTP metadata in `fetch`; local sessions set `fetch`
+  to `nil`.
   """
 
   alias FeedReader.Fetch

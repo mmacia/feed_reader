@@ -90,6 +90,13 @@ defmodule FeedReader.OptionsTest do
     assert length(items) == 2
   end
 
+  test "replayable is call-level only" do
+    Application.put_env(:feed_reader, :options, replayable: true)
+
+    refute FeedReader.Options.replayable?(FeedReader.Options.resolve([]))
+    assert FeedReader.Options.replayable?(FeedReader.Options.resolve(replayable: true))
+  end
+
   test "malformed application options are ignored" do
     Application.put_env(:feed_reader, :options, :invalid)
 

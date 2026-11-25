@@ -1,10 +1,11 @@
 # Streaming and verified parsing
 
-Streaming APIs return a `%FeedReader.Session{}` containing a one-pass
-`events` enumerable. Events are delivered in order: one `{:feed, feed}` event
-followed by normalized `{:item, item}` events. A parser error is emitted as a
-terminal `{:error, reason}` event. Errors that happen before a session can be
-created, such as an unknown format or a failed remote request, are returned
+Streaming APIs return a `%FeedReader.Session{}` with an `events` enumerable. By
+default the stream is one-pass; replayable remote sessions can be enumerated
+again from the beginning. Events are delivered in order: one `{:feed, feed}`
+event followed by normalized `{:item, item}` events. A parser error is emitted
+as a terminal `{:error, reason}` event. Errors that happen before a session can
+be created, such as an unknown format or a failed remote request, are returned
 directly as `{:error, reason}`.
 
 The feed event includes a single feed-metadata snapshot. RSS and Atom include
@@ -56,13 +57,49 @@ not count only item events.
 Remote sessions include a `fetch` record. The remote response is downloaded,
 decoded, checksummed, and staged in an owned temporary file before
 `stream/2` returns. Parsing the staged file is lazy; the network download is
-not. Fully consuming events removes the temporary file. If enumeration stops
-early, raises, or otherwise may not finish, call `FeedReader.close/1` in an
-`after` block. Closing is safe after completion and can be repeated.
+not. Fully consuming events removes the temporary file; replayable sessions
+skip that automatic cleanup. If enumeration stops early, raises, or otherwise
+may not finish, call `FeedReader.close/1` in an `after` block. Closing is safe
+after completion and can be repeated.
 
 An ETag 304 or a matching previous checksum returns
 `{:ok, :not_modified}` or `{:ok, :not_changed}` respectively, instead of a
 session.
+
+## Sample first, then replay
+
+Set `:replayable` when a consumer needs to inspect a bounded prefix before
+processing the full feed. The option is per call, defaults to `false`, and is
+never read from application configuration.
+
+```elixir
+{:ok, session} =
+  FeedReader.stream("https://example.com/feed.xml", replayable: true)
+
+try do
+  sample =
+    session.events
+    |> Stream.filter(&match?({:item, _}, &1))
+    |> Enum.take(5)
+
+  if keep_feed?(sample) do
+    Enum.each(session.events, &process_event/1)
+  end
+after
+  FeedReader.close(session)
+end
+```
+
+The HTTP request happens once, before `stream/2` returns. Each enumeration
+reparses the retained file from the beginning, so filtering out the initial
+`{:feed, _}` event matters when sampling items. The temporary file survives
+early termination and full consumption; `FeedReader.close/1` is the only
+cleanup path and is idempotent. `stream_verified/2` accepts the same option and
+validates before returning; replay then delivers events without another
+validation pass or HTTP request.
+
+Format detection and validation still happen before a replayable session is
+returned. These sessions are not a raw-XML download primitive.
 
 ## Collect input chunks into a result
 

@@ -2,8 +2,8 @@ defmodule FeedReader.Downloader do
   @moduledoc """
   Streams remote response bodies into owned temporary files while computing the
   decoded MD5 checksum. Gzip and raw deflate are decoded incrementally; stacked
-  and unknown content encodings are rejected. See `download/2` for its options
-  and resource budgets.
+  and unknown content encodings are rejected. See
+  `FeedReader.Downloader.download/2` for its options and resource budgets.
   """
 
   alias FeedReader.{Fetch, Transport}

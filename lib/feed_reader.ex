@@ -3,17 +3,39 @@ defmodule FeedReader do
   Standalone feed fetching and parsing library.
 
   This module exposes format detection, validation, local parsing, and streaming
-  helpers. Remote sessions download and checksum into a temporary file before
-  exposing their one-pass event stream.
+  helpers. A session owns the source used by its event stream: local sessions
+  read the caller's file, while remote sessions stage the downloaded response in
+  a library-owned temporary file.
+
+  ## Session ownership
+
+  Every streaming call returns one `FeedReader.Session`; callers do not manage a
+  separate download or parser owner. The session owns the parser pass and, for
+  remote calls, the temporary file staged before the session is returned.
+
+  - Local sessions read the caller's file and never remove it. Enumerating
+    `session.events` again reparses the file from the beginning.
+  - Default remote sessions are one-pass. Completing enumeration removes their
+    temporary file; close the session in an `after` block if enumeration may
+    stop early.
+  - Remote sessions with `:replayable` set to `true` retain their file between
+    parsing passes. Enumerating `session.events` again reparses the full feed
+    from the beginning without another HTTP request. `FeedReader.close/1` is the
+    only cleanup path and is idempotent.
+
+  Format detection and validation still run before the session is returned.
+  Replayable sessions are not a raw-download primitive; use them to sample
+  normalized events and then process the full feed.
 
   ## Application configuration
 
   Configure stable defaults under `:feed_reader, :options`. Per-call options
   override configured values, which override the defaults below. The application
   value must be a keyword list; other values are ignored. `:feed_url`,
-  `:previous_etag`, `:previous_checksum`, and `:item_filter` are request-specific
-  and can only be supplied to individual calls. Options owned by custom formats
-  or transports can also be configured and are passed to those integrations.
+  `:previous_etag`, `:previous_checksum`, `:item_filter`, and `:replayable` are
+  request-specific and can only be supplied to individual calls. Options owned by
+  custom formats or transports can also be configured and are passed to those
+  integrations.
 
       config :feed_reader, :options,
         max_items: 1_000,
@@ -131,6 +153,11 @@ defmodule FeedReader do
     default.
   - `:previous_checksum` — decoded-body checksum; a match returns
     `:not_changed` and removes the downloaded file.
+  - `:replayable` — when `true`, retain the downloaded temporary file after each
+    parsing pass. Enumerating `session.events` again reparses the full feed from
+    the beginning without another HTTP request. The file is removed only by
+    `FeedReader.close/1`. Defaults to `false`; per-call only and never read from
+    application configuration.
   - `:max_compressed_bytes`, `:max_decoded_bytes`, and `:max_temp_bytes` —
     non-negative raw-body, decoded-body, and temporary-file byte limits;
     defaults are `#{@option_defaults[:max_compressed_bytes]}` bytes each.
@@ -252,10 +279,16 @@ defmodule FeedReader do
   @doc """
   Downloads and checksums a feed before returning a lazy event session.
 
-  The session emits feed metadata followed by items from one local XML pass.
-  Call `close/1` in an `after` block if enumeration may stop early. Matching
-  previous checksums or a conditional HTTP 304 return `:not_changed` or
+  The session emits feed metadata followed by items from one lazy local XML
+  pass. It owns the staged file. By default, fully consuming events removes that
+  file; call `close/1` in an `after` block if enumeration may stop early.
+  Matching previous checksums or a conditional HTTP 304 return `:not_changed` or
   `:not_modified` without a session.
+
+  Pass `replayable: true` to retain the file after each pass, enumerate a
+  bounded sample, then enumerate `session.events` again to process the full feed
+  from the beginning without another HTTP request. Replayable sessions must be
+  closed; `close/1` is idempotent.
 
   #{String.trim(@streaming_item_limit_doc)}
 
@@ -298,8 +331,15 @@ defmodule FeedReader do
   Downloads and validates a feed before exposing its remote event session.
 
   Matching checksums and conditional HTTP 304 responses return `:not_changed`
-  and `:not_modified` without a session. Call `close/1` if enumeration may stop
-  early.
+  and `:not_modified` without a session. Validation runs once before the
+  session is returned. The session owns the staged file: by default, fully
+  consuming events removes it; call `close/1` in an `after` block if
+  enumeration may stop early.
+
+  Pass `replayable: true` to retain the validated file after each delivery pass.
+  Sample events, then enumerate `session.events` again to deliver the full feed
+  from the beginning without another HTTP request. Validation is not repeated
+  during replay. Replayable sessions must be closed; `close/1` is idempotent.
 
   #{String.trim(@streaming_item_limit_doc)}
 
@@ -354,15 +394,11 @@ defmodule FeedReader do
     case FeedReader.Parser.stream_file(path, parser_opts) do
       {:ok, session} ->
         events =
-          Stream.transform(
-            session.events,
-            fn -> :ok end,
-            fn event, state -> {[event], state} end,
-            fn _state ->
-              FeedReader.Downloader.close(download)
-              []
-            end
-          )
+          if FeedReader.Options.replayable?(opts) do
+            session.events
+          else
+            close_after_enumeration(session.events, download)
+          end
 
         {:ok, %FeedReader.Session{events: events, fetch: fetch, resource: download}}
 
@@ -370,6 +406,18 @@ defmodule FeedReader do
         FeedReader.Downloader.close(download)
         {:error, reason}
     end
+  end
+
+  defp close_after_enumeration(events, download) do
+    Stream.transform(
+      events,
+      fn -> :ok end,
+      fn event, state -> {[event], state} end,
+      fn _state ->
+        FeedReader.Downloader.close(download)
+        []
+      end
+    )
   end
 
   @doc """

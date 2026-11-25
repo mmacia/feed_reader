@@ -16,15 +16,23 @@ defmodule FeedReader.VerifiedParser do
       resource = owned_resource(opts)
 
       events =
-        Stream.transform(
-          session.events,
-          fn -> :ok end,
-          fn event, state -> {[event], state} end,
-          fn _state -> close_owned_resource(resource) end
-        )
+        if FeedReader.Options.replayable?(opts) do
+          session.events
+        else
+          close_after_enumeration(session.events, resource)
+        end
 
       {:ok, %Session{session | events: events, resource: resource}}
     end
+  end
+
+  defp close_after_enumeration(events, resource) do
+    Stream.transform(
+      events,
+      fn -> :ok end,
+      fn event, state -> {[event], state} end,
+      fn _state -> close_owned_resource(resource) end
+    )
   end
 
   defp validate(path, opts) do

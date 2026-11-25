@@ -3,7 +3,7 @@ defmodule FeedReader.Options do
 
   alias FeedReader.XMLResourceLimits
 
-  @call_only_options [:feed_url, :previous_etag, :previous_checksum, :item_filter]
+  @call_only_options [:feed_url, :previous_etag, :previous_checksum, :item_filter, :replayable]
 
   @doc "Merges application defaults with call options; malformed application config is ignored."
   @spec resolve(keyword()) :: keyword()
@@ -15,6 +15,10 @@ defmodule FeedReader.Options do
 
     Keyword.merge(configured, opts)
   end
+
+  @doc false
+  @spec replayable?(keyword()) :: boolean()
+  def replayable?(opts), do: Keyword.get(opts, :replayable, false) == true
 
   @doc false
   @spec queue_limit(keyword()) :: non_neg_integer()
